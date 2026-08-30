@@ -43,7 +43,7 @@ Ports and adapters, with a pure domain at the centre. Everything the outside wor
 HTTP, Postgres, CSV dialects, OAuth, the FIT binary format — sits at the edge behind an interface,
 and the interesting logic sits inside where it can be tested without any of it.
 
-```
+```text
                  ┌─────────────────────────────────────────────┐
    driving  ──▶  │  web/  cli/  jobs/          (adapters in)    │
    adapters      ├─────────────────────────────────────────────┤
@@ -137,7 +137,7 @@ implementations — which is why the ports above are as small as they are.
 
 ### 3.1 The double loop
 
-```
+```text
  ┌─ OUTER LOOP ─ one acceptance test, written first, red for a while ────────────┐
  │                                                                              │
  │   1. Write the acceptance test. Watch it fail for the right reason.          │
@@ -394,6 +394,7 @@ and are not: rep wall clocks read as rep **starts**; interval timing verified to
 modes; attaching to another session's activity refused up front; a Postgres queue rather than
 Redis/BullMQ; email-only sign-in with a signed cookie standing in for real authentication.
 
-`GAPS.md` records what is genuinely missing, with each item tracked as issue #1–#38. Known gaps are
-not defects you discovered — check there before "fixing" something, and if you disagree with a
-decision, argue it in the issue rather than changing it in passing.
+GitHub issues **#1–#38** record what is genuinely missing — the former `GAPS.md`, one issue per
+gap, each carrying numbered requirements and Given/When/Then acceptance criteria (see §3.6). Known
+gaps are not defects you discovered: check the issue list before "fixing" something, and if you
+disagree with a decision, argue it in the issue rather than changing it in passing.
