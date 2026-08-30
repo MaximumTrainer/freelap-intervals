@@ -4,7 +4,6 @@ import { PgSyncLedger } from '~/ledger/pg-sync-ledger'
 import { InMemorySyncLedger } from '~/ledger/sync-ledger'
 
 import { aTestDatabase } from '../support/test-database'
-
 import { describeStorageContract } from './repository-contract'
 
 describeStorageContract('in memory', async () => ({

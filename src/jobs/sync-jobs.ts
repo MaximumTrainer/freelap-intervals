@@ -61,6 +61,6 @@ async function refuseToRetryUnfixable<T>(work: () => Promise<T>): Promise<T> {
     return await work()
   } catch (error) {
     const hopeless = error instanceof ReconnectRequiredError || error instanceof AdapterDegradedError
-    throw hopeless ? new PermanentJobFailure(error as Error) : error
+    throw hopeless ? new PermanentJobFailure(error) : error
   }
 }

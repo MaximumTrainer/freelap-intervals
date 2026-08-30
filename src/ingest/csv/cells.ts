@@ -9,7 +9,7 @@ export type TimeOfDay = Pick<LocalDateTime, 'hour' | 'minute' | 'second'>
 
 const BLANK = /^[\s-]*$/
 const ISO_DATE = /^(\d{4})-(\d{1,2})-(\d{1,2})/
-const PARTED_DATE = /^(\d{1,4})[/.\-](\d{1,2})[/.\-](\d{2,4})/
+const PARTED_DATE = /^(\d{1,4})[/.-](\d{1,2})[/.-](\d{2,4})/
 const CLOCK = /^(\d{1,2}):(\d{2})(?::(\d{2})(?:[.,]\d+)?)?/
 const CLOCK_PARTS = /^\d{1,3}(:\d{1,2}){0,2}$/
 

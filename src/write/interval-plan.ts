@@ -1,5 +1,5 @@
 import { intervalNameFor } from '~/domain/interval-naming'
-import type { Rep, SprintSession } from '~/domain/sprint-session'
+import type { SprintSession } from '~/domain/sprint-session'
 import type { IcuInterval } from '~/icu/intervals-icu-client'
 
 import type { SessionTimeline } from './session-timeline'
@@ -29,7 +29,7 @@ export function planIntervals(
   const repsByIndex = new Map(session.reps.map((rep) => [rep.index, rep]))
 
   return timeline.laps.map((lap) => {
-    const rep = repsByIndex.get(lap.repIndex) as Rep
+    const rep = repsByIndex.get(lap.repIndex)!
 
     return {
       repIndex: lap.repIndex,

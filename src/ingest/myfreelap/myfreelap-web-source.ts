@@ -6,7 +6,6 @@ import type { FreelapCredentials } from '~/security/connection-store'
 
 import type { DateWindow, FreelapSource, HealthReport, SessionSummary } from '../freelap-source'
 import { AdapterDegradedError } from '../freelap-source'
-
 import type { MyFreelapRun, MyFreelapSessionDetail, MyFreelapSessionList } from './myfreelap-payloads'
 import { readSessionDetail, readSessionList } from './myfreelap-payloads'
 

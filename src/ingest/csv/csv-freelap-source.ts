@@ -1,7 +1,6 @@
 import type { SprintSession } from '~/domain/sprint-session'
 
 import type { DateWindow, FreelapSource, HealthReport, SessionSummary } from '../freelap-source'
-
 import type { CsvImportOptions } from './csv-adapter'
 import { readSessions } from './csv-adapter'
 

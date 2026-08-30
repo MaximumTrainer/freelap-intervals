@@ -44,7 +44,7 @@ export class FakeMyFreelapApi {
       if (url.pathname.startsWith('/sessions/')) return this.sessionDetail(url.pathname.split('/')[2] ?? '')
 
       return json({ error: 'not found' }, 404)
-    }) as typeof fetch
+    })
   }
 
   get loginCount(): number {

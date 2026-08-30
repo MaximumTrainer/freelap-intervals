@@ -46,7 +46,7 @@ class PgliteDatabase implements TestDatabase {
           await tx.exec(sql)
         },
       }),
-    ) as Promise<T>
+    )
   }
 
   async givenUser(email: string): Promise<string> {

@@ -64,7 +64,7 @@ export function parseDelimited(text: string, delimiter: Delimiter): string[][] {
     }
     if (character === delimiter) endField()
     else if (character === '\n') endRow()
-    else field += character
+    else field += character!
   }
 
   if (field !== '' || row.length > 0) endRow()
@@ -84,7 +84,7 @@ function readQuoted(source: string, openQuote: number, seekTo: (position: number
       }
       break
     }
-    value += source[position]
+    value += source[position]!
     position += 1
   }
 

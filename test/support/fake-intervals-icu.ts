@@ -36,7 +36,7 @@ export class FakeIntervalsIcu implements IntervalsIcuClient {
   private readonly stored = new Map<string, StoredActivity>()
   private readonly customFields = new Set<string>()
   private nextId = 1
-  private failures: IntervalsIcuError[] = []
+  private readonly failures: IntervalsIcuError[] = []
 
   constructor(options: FakeIntervalsIcuOptions = {}) {
     this.athleteId = options.athleteId ?? 'i1234'

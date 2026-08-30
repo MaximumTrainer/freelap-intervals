@@ -39,7 +39,7 @@ export class StubFetch {
         status: next.status,
         headers: { 'content-type': 'application/json' },
       })
-    }) as typeof fetch
+    })
   }
 
   lastRequest(): RecordedRequest {

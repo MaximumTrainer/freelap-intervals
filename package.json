@@ -10,18 +10,26 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run test",
+    "check": "npm run typecheck && npm run lint && npm run test",
     "migrate": "tsx src/db/migrate-cli.ts",
     "web": "tsx src/web/main.ts",
     "worker": "tsx src/worker/main.ts",
     "sync": "tsx src/cli/main.ts"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^22.10.2",
     "@types/pg": "^8.23.1",
+    "eslint": "^10.9.1",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import-x": "^4.17.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.68.0",
     "vitest": "^2.1.8"
   },
   "dependencies": {

@@ -155,7 +155,7 @@ function readValues(view: DataView, start: number, definition: Definition): [Raw
 
 function readValue(view: DataView, position: number, field: FieldLayout): number | null {
   const base = baseTypeById(field.baseTypeId)
-  if (!base || base.size !== field.size) return null
+  if (base?.size !== field.size) return null
 
   const raw = base.size === 1 ? view.getUint8(position) : base.size === 2 ? view.getUint16(position, true) : view.getUint32(position, true)
 

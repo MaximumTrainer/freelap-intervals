@@ -168,7 +168,7 @@ function splitActivityBody(body: Record<string, unknown>): [ActivityPatch, Custo
   const entries = Object.entries(body)
 
   return [
-    Object.fromEntries(entries.filter(([key]) => ACTIVITY_FIELDS.has(key))) as ActivityPatch,
+    Object.fromEntries(entries.filter(([key]) => ACTIVITY_FIELDS.has(key))),
     Object.fromEntries(entries.filter(([key]) => !ACTIVITY_FIELDS.has(key))) as CustomFieldValues,
   ]
 }
