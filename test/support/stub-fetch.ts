@@ -9,6 +9,7 @@ export interface RecordedRequest {
 interface ScriptedResponse {
   readonly status: number
   readonly body?: unknown
+  readonly headers?: Readonly<Record<string, string>>
 }
 
 /** A scripted stand-in for `fetch` that records what the client sent. */
@@ -37,7 +38,7 @@ export class StubFetch {
       const next = this.script.shift() ?? { status: 200, body: {} }
       return new Response(next.body === undefined ? null : JSON.stringify(next.body), {
         status: next.status,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...next.headers },
       })
     })
   }

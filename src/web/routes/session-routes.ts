@@ -10,19 +10,16 @@ import { html, redirect } from '../http'
 import type { Router } from '../router'
 import type { RequestContext } from '../web-app'
 import { requireUser } from '../web-app'
+import type { PageChrome } from '../views'
 import { auditPage, columnMappingPage, dashboardPage, messagePage, reviewPage, sessionPage } from '../views'
 
 /** Importing sessions, reviewing where they should go, syncing them and reading the result. */
 export function sessionRoutes(router: Router<RequestContext>): void {
   router.get('/', async (context) => {
     const userId = requireUser(context)
-    const { connections, workspaces, flags, users } = context.deps
+    const { workspaces, flags, connectionProbe } = context.deps
 
-    const [user, intervalsIcu, freelap] = await Promise.all([
-      users.find(userId),
-      connections.findIntervalsIcu(userId),
-      connections.findFreelap(userId),
-    ])
+    const probeResult = await connectionProbe.probe(userId)
 
     const workspace = workspaces.forUser(userId)
     const [sessions, entries] = await Promise.all([workspace.sessions.all(), workspace.ledger.all()])
@@ -30,12 +27,12 @@ export function sessionRoutes(router: Router<RequestContext>): void {
 
     return html(
       dashboardPage({
-        email: user?.email ?? '',
-        intervalsIcuConnected: intervalsIcu !== null,
-        intervalsIcuNeedsReconnect: intervalsIcu?.status === 'needs_reconnect',
-        freelapConnected: freelap !== null,
-        freelapDegraded: freelap?.status === 'degraded',
+        email: context.email ?? '',
+        intervalsIcu: probeResult.intervalsIcu,
+        freelap: probeResult.freelap,
         webAdapterAvailable: flags.myfreelapWebAdapter,
+        oauthScopes: context.deps.oauth.requestedScopes,
+        csrfToken: context.csrfToken,
         sessions: sessions
           .map((session) => ({ session, entry: bySourceId.get(session.sourceId) ?? null }))
           .sort(newestFirst),
@@ -46,7 +43,7 @@ export function sessionRoutes(router: Router<RequestContext>): void {
   router.get('/audit', async (context) => {
     const userId = requireUser(context)
 
-    return html(auditPage(await context.deps.audit.recent(userId)))
+    return html(auditPage(await context.deps.audit.recent(userId), chromeFrom(context)))
   })
 
   router.post('/sessions/import', async (context) => {
@@ -70,6 +67,8 @@ export function sessionRoutes(router: Router<RequestContext>): void {
       columnMappingPage({
         fingerprint: context.params.fingerprint ?? '',
         unmapped: decodeHeaders(context.url.searchParams.get('headers')),
+        email: context.email ?? '',
+        csrfToken: context.csrfToken,
       }),
     )
   })
@@ -95,7 +94,7 @@ export function sessionRoutes(router: Router<RequestContext>): void {
 
     const entry = await workspace.ledger.findBySourceId(session.sourceId)
 
-    return html(sessionPage({ session, entry, verification: entry?.verification ?? null }))
+    return html(sessionPage({ session, entry, verification: entry?.verification ?? null, email: context.email ?? '', csrfToken: context.csrfToken }))
   })
 
   router.get('/sessions/:sourceId/review', async (context) => {
@@ -116,6 +115,10 @@ export function sessionRoutes(router: Router<RequestContext>): void {
         needsConfirmation: plan.needsConfirmation,
         preview: preview.stream,
         repOffsetsS: preview.repOffsetsS,
+        suggestedOffsetS: preview.suggestedOffsetS,
+        ...(preview.noStreams ? { noStreams: true } : {}),
+        email: context.email ?? '',
+        csrfToken: context.csrfToken,
       }),
     )
   })
@@ -130,13 +133,16 @@ export function sessionRoutes(router: Router<RequestContext>): void {
     const activityId = context.body.field('activityId')?.trim()
     const choice: SyncChoice = activityId ? { mode: 'attach', activityId } : { mode: 'create-new' }
     const offsetS = Number(context.body.field('offsetS') ?? 0)
+    const force = context.body.field('force') === 'true'
 
     await workspace.ledger.save(queuedEntry(session, choice, activityId ?? ''))
     await enqueueSync(context.deps.queue, {
       userId,
       sourceId,
       choice,
+      requestId: context.requestId,
       ...(Number.isFinite(offsetS) && offsetS !== 0 ? { offsetS } : {}),
+      ...(force ? { force: true } : {}),
     })
 
     return redirect(`/sessions/${sourceId}`)
@@ -147,7 +153,7 @@ export function sessionRoutes(router: Router<RequestContext>): void {
     const sourceId = context.params.sourceId ?? ''
     if (!(await context.deps.workspaces.forUser(userId).sessions.find(sourceId))) return notFound()
 
-    await enqueueVerify(context.deps.queue, { userId, sourceId })
+    await enqueueVerify(context.deps.queue, { userId, sourceId, requestId: context.requestId })
 
     return redirect(`/sessions/${sourceId}`)
   })
@@ -195,6 +201,10 @@ function readMappingForm(body: RequestBody, unmapped: readonly UnmappedColumn[])
 
 function newestFirst(left: { session: SprintSession }, right: { session: SprintSession }): number {
   return Date.parse(right.session.startedAt) - Date.parse(left.session.startedAt)
+}
+
+function chromeFrom(context: RequestContext): PageChrome {
+  return { email: context.email ?? '', csrfToken: context.csrfToken }
 }
 
 function notFound() {

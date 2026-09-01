@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { readSessions } from '~/ingest/csv/csv-adapter'
 import { AdapterDegradedError } from '~/ingest/freelap-source'
 import { MyFreelapWebSource } from '~/ingest/myfreelap/myfreelap-web-source'
+import type { AcquireOptions, OutboundRateLimiter, RateLimiterStats } from '~/outbound-rate-limiter'
 import { Secret } from '~/security/secret'
 
 import { FakeMyFreelapApi } from '../../support/fake-myfreelap-api'
@@ -118,3 +119,37 @@ function withoutSourceId<T extends { sourceId: string }>(session: T): Omit<T, 's
   const { sourceId, ...rest } = session
   return rest
 }
+
+class RecordingRateLimiter implements OutboundRateLimiter {
+  readonly acquires: string[] = []
+  readonly drained: Array<{ key: string; durationMs: number }> = []
+  readonly stats: RateLimiterStats = { waits: 0, totalWaitMs: 0 }
+
+  async acquire(key: string, _options?: AcquireOptions): Promise<void> {
+    this.acquires.push(key)
+  }
+
+  drainUntil(key: string, durationMs: number): void {
+    this.drained.push({ key, durationMs })
+  }
+}
+
+describe('outbound rate limiting (S6)', () => {
+  it('acquires rate-limit tokens before every outbound request', async () => {
+    const limiter = new RecordingRateLimiter()
+    const api = new FakeMyFreelapApi()
+    const source = new MyFreelapWebSource({
+      credentials: { username: 'dan@example.com', password: new Secret('hunter2') },
+      timezone: 'Europe/London',
+      baseUrl: 'https://api.myfreelap.test',
+      fetch: api.fetch,
+      limiter,
+      limiterKeys: ['myfreelap', 'athlete:dan'],
+    })
+
+    await source.listSessions(august)
+
+    expect(limiter.acquires.length).toBeGreaterThan(0)
+    expect(limiter.acquires.every((k) => k === 'myfreelap' || k === 'athlete:dan')).toBe(true)
+  })
+})

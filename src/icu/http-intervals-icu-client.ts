@@ -1,3 +1,6 @@
+import type { OutboundRateLimiter } from '~/outbound-rate-limiter'
+import { NoopRateLimiter } from '~/outbound-rate-limiter'
+
 import type {
   ActivityPatch,
   ActivityUpload,
@@ -37,10 +40,12 @@ export interface HttpIntervalsIcuClientOptions {
   readonly baseUrl?: string
   readonly fetch?: typeof fetch
   readonly retry?: RetryPolicy
+  readonly limiter?: OutboundRateLimiter
+  readonly limiterKeys?: readonly string[]
 }
 
 interface RequestSpec {
-  readonly method: 'GET' | 'POST' | 'PUT'
+  readonly method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   readonly path: string
   readonly query?: Readonly<Record<string, string>>
   readonly json?: unknown
@@ -63,11 +68,15 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
   private readonly http: typeof fetch
   private readonly retry: Required<RetryPolicy>
   private readonly credentials: CredentialSource
+  private readonly limiter: OutboundRateLimiter
+  private readonly limiterKeys: readonly string[]
 
   constructor(options: HttpIntervalsIcuClientOptions) {
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '')
     this.credentials = asCredentialSource(options.credentials)
     this.http = options.fetch ?? globalThis.fetch
+    this.limiter = options.limiter ?? new NoopRateLimiter()
+    this.limiterKeys = options.limiterKeys ?? []
     this.retry = {
       attempts: options.retry?.attempts ?? DEFAULT_ATTEMPTS,
       baseDelayMs: options.retry?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
@@ -98,6 +107,10 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
 
   async updateActivity(activityId: string, patch: ActivityPatch): Promise<IcuActivity> {
     return this.send<IcuActivity>({ method: 'PUT', path: `/api/v1/activity/${activityId}`, json: patch })
+  }
+
+  async deleteActivity(activityId: string): Promise<void> {
+    await this.send({ method: 'DELETE', path: `/api/v1/activity/${activityId}` })
   }
 
   async getStreams(activityId: string): Promise<IcuStreams> {
@@ -177,9 +190,15 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
 
     for (let attempt = 1; attempt <= this.retry.attempts; attempt += 1) {
       try {
+        await this.acquireAll()
+
         return await this.sendOnce<T>(spec)
       } catch (error) {
         lastError = asIntervalsIcuError(error)
+
+        if (lastError.retryAfterS !== undefined) {
+          this.drainAll(lastError.retryAfterS * 1000)
+        }
 
         // A rejected token is worth exactly one more try, with a fresh one.
         if (lastError.status === 401 && !renewedCredentials && (await this.credentials.refresh())) {
@@ -196,6 +215,18 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
     throw lastError ?? new IntervalsIcuError('Request failed', 500, false)
   }
 
+  private async acquireAll(): Promise<void> {
+    for (const key of this.limiterKeys) {
+      await this.limiter.acquire(key)
+    }
+  }
+
+  private drainAll(durationMs: number): void {
+    for (const key of this.limiterKeys) {
+      this.limiter.drainUntil(key, durationMs)
+    }
+  }
+
   private async sendOnce<T>(spec: RequestSpec): Promise<T> {
     const response = await this.http(this.urlFor(spec), {
       method: spec.method,
@@ -209,6 +240,7 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
         `intervals.icu ${spec.method} ${spec.path} failed with ${response.status}: ${await safeText(response)}`,
         response.status,
         RETRYABLE_STATUSES.has(response.status),
+        parseRetryAfter(response.headers.get('retry-after')),
       )
     }
 
@@ -292,4 +324,10 @@ async function safeText(response: Response): Promise<string> {
   } catch {
     return ''
   }
+}
+
+function parseRetryAfter(header: string | null): number | undefined {
+  if (!header) return undefined
+  const seconds = Number(header)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined
 }

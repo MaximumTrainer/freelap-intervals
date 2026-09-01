@@ -43,7 +43,17 @@ describe('loadMigrations', () => {
   it('reads the project migrations in filename order', async () => {
     const migrations = await loadMigrations()
 
-    expect(migrations.map((migration) => migration.version)).toEqual(['001_init'])
+    expect(migrations.map((migration) => migration.version)).toEqual([
+      '001_init',
+      '002_sessions',
+      '003_webhook_indexes',
+      '004_rate_limiter',
+      '005_queue_key',
+      '006_scheduler',
+    ])
     expect(migrations[0]?.sql).toContain('create table users')
+    expect(migrations[1]?.sql).toContain('create table sessions')
+    expect(migrations[2]?.sql).toContain('connections_by_external')
+    expect(migrations[3]?.sql).toContain('rate_limiter_buckets')
   })
 })

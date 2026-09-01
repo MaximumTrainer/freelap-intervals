@@ -170,7 +170,10 @@ function interpolate(profile: readonly Point[], intoLap: number): number {
   return before.distanceM + progress * (after.distanceM - before.distanceM)
 }
 
+/** Finds the index of the sample closest to `targetS`. Throws on an empty array — returning 0 for "nothing to search" is a silent data-corruption trap. */
 export function nearestIndex(times: readonly number[], targetS: number): number {
+  if (times.length === 0) throw new Error('nearestIndex called with an empty time array')
+
   let best = 0
   let bestGap = Number.POSITIVE_INFINITY
 

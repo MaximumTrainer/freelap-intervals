@@ -11,8 +11,12 @@ export interface LedgerEntry {
   /** Hash of what we intended to write, so an unchanged session can be recognised. */
   readonly contentHash: string
   readonly syncedAt: string
+  /** The clock offset used for this sync, so a different offset triggers a rewrite. */
+  readonly offsetS?: number
   readonly verification?: { readonly status: VerificationStatus; readonly diffs: readonly VerificationDiff[] }
   readonly failedStep?: string
+  readonly completedSteps?: readonly string[]
+  readonly rollback?: 'ok' | 'failed' | 'skipped'
 }
 
 export interface SyncLedger {

@@ -6,6 +6,7 @@ import { AuditedIntervalsIcuClient } from '~/icu/audited-intervals-icu-client'
 import type { RetryPolicy } from '~/icu/http-intervals-icu-client'
 import { HttpIntervalsIcuClient } from '~/icu/http-intervals-icu-client'
 import type { CsvImportOptions } from '~/ingest/csv/csv-adapter'
+import type { OutboundRateLimiter } from '~/outbound-rate-limiter'
 import type { ConnectionStore } from '~/security/connection-store'
 
 import { SyncApplication } from './sync-application'
@@ -18,6 +19,7 @@ export interface ApplicationsOptions {
   readonly audit: AuditLog
   readonly icuBaseUrl?: string
   readonly icuRetry?: RetryPolicy
+  readonly icuLimiter?: OutboundRateLimiter
   readonly fetch?: typeof fetch
   readonly csv?: CsvImportOptions
   readonly now?: () => Date
@@ -48,6 +50,10 @@ export class Applications {
         ...(this.options.icuBaseUrl === undefined ? {} : { baseUrl: this.options.icuBaseUrl }),
         ...(this.options.fetch === undefined ? {} : { fetch: this.options.fetch }),
         ...(this.options.icuRetry === undefined ? {} : { retry: this.options.icuRetry }),
+        ...(this.options.icuLimiter === undefined ? {} : {
+          limiter: this.options.icuLimiter,
+          limiterKeys: ['intervals.icu', `athlete:${connection.athleteId}`],
+        }),
       }),
       this.options.audit,
       userId,

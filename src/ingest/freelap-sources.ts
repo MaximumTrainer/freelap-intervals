@@ -1,3 +1,4 @@
+import type { OutboundRateLimiter } from '~/outbound-rate-limiter'
 import type { ConnectionStore } from '~/security/connection-store'
 
 import type { FreelapSource } from './freelap-source'
@@ -18,6 +19,7 @@ export interface FreelapSourcesOptions {
   readonly timezone: string
   readonly baseUrl?: string
   readonly fetch?: typeof fetch
+  readonly limiter?: OutboundRateLimiter
 }
 
 /**
@@ -39,6 +41,10 @@ export class FreelapSources {
       timezone: this.options.timezone,
       ...(this.options.baseUrl === undefined ? {} : { baseUrl: this.options.baseUrl }),
       ...(this.options.fetch === undefined ? {} : { fetch: this.options.fetch }),
+      ...(this.options.limiter === undefined ? {} : {
+        limiter: this.options.limiter,
+        limiterKeys: ['myfreelap', `athlete:${userId}`],
+      }),
     })
   }
 }

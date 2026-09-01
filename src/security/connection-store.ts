@@ -47,6 +47,18 @@ interface ConnectionRow {
   readonly status: ConnectionStatus
 }
 
+export interface ResealOptions {
+  readonly dryRun?: boolean
+  readonly onProgress?: (current: number, total: number) => void
+}
+
+export interface ResealResult {
+  readonly resealed: number
+  readonly skipped: number
+  readonly failed: ReadonlyArray<{ readonly userId: string; readonly provider: string }>
+  readonly wouldReseal?: number
+}
+
 /**
  * Every credential this integration holds, sealed before it reaches the database and opened only
  * when a call is about to be made. Disconnecting deletes the row outright rather than flagging it.
@@ -129,20 +141,51 @@ export class ConnectionStore {
     await this.database.query('delete from connections where user_id = $1 and provider = $2', [userId, provider])
   }
 
-  /** Re-seals every stored secret under the current master key. Returns how many were rotated. */
-  async resealAll(): Promise<number> {
+  /** Re-seals every stored secret under the current master key, skipping those already there. */
+  async resealAll(options: ResealOptions = {}): Promise<ResealResult> {
+    const { dryRun = false, onProgress } = options
+    const targetKeyId = this.cipher.currentKeyId
+
     const { rows } = await this.database.query<{ user_id: string; provider: Provider; secret_envelope: string }>(
       'select user_id, provider, secret_envelope from connections where secret_envelope is not null',
     )
 
-    for (const row of rows) {
-      await this.database.query(
-        'update connections set secret_envelope = $3, updated_at = now() where user_id = $1 and provider = $2',
-        [row.user_id, row.provider, await this.cipher.reseal(row.secret_envelope)],
-      )
+    let resealed = 0
+    let skipped = 0
+    let wouldReseal = 0
+    const failed: Array<{ userId: string; provider: string }> = []
+
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index]!
+      const envelopeKeyId = row.secret_envelope.split('.')[1]
+
+      if (envelopeKeyId === targetKeyId) {
+        skipped++
+        onProgress?.(index + 1, rows.length)
+        continue
+      }
+
+      if (dryRun) {
+        wouldReseal++
+        onProgress?.(index + 1, rows.length)
+        continue
+      }
+
+      try {
+        const freshEnvelope = await this.cipher.reseal(row.secret_envelope)
+        await this.database.query(
+          'update connections set secret_envelope = $3, updated_at = now() where user_id = $1 and provider = $2',
+          [row.user_id, row.provider, freshEnvelope],
+        )
+        resealed++
+      } catch {
+        failed.push({ userId: row.user_id, provider: row.provider })
+      }
+
+      onProgress?.(index + 1, rows.length)
     }
 
-    return rows.length
+    return { resealed, skipped, failed, ...(dryRun ? { wouldReseal } : {}) }
   }
 
   private async findRow(userId: string, provider: Provider): Promise<ConnectionRow | null> {

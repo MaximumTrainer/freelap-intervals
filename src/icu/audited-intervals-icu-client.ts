@@ -50,6 +50,10 @@ export class AuditedIntervalsIcuClient implements IntervalsIcuClient {
 
   // --- writes are recorded ------------------------------------------------
 
+  deleteActivity(activityId: string): Promise<void> {
+    return this.recording('deleteActivity', activityId, {}, () => this.inner.deleteActivity(activityId))
+  }
+
   updateActivity(activityId: string, patch: ActivityPatch): Promise<IcuActivity> {
     return this.recording('updateActivity', activityId, { fields: Object.keys(patch) }, () =>
       this.inner.updateActivity(activityId, patch),

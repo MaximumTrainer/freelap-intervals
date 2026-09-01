@@ -35,42 +35,74 @@ export interface MyFreelapRun {
   readonly splits: ReadonlyArray<{ distanceM: number; timeS: number }>
 }
 
+export interface SkippedRun {
+  readonly index: number
+  readonly reason: string
+}
+
 export interface SessionDetail {
   readonly id: string
   readonly name: string
   readonly athlete: string
   readonly distanceM: number | null
   readonly runs: readonly MyFreelapRun[]
+  readonly skippedRuns: readonly SkippedRun[]
 }
 
 export function readSessionList(payload: MyFreelapSessionList, source: string): SessionListEntry[] {
   const sessions = payload.sessions
   if (!Array.isArray(sessions)) throw degraded(source, 'the session list had no sessions array')
 
-  return sessions.map((session: Record<string, unknown>, index) => {
-    const where = `session ${index + 1} of the list`
+  const entries: SessionListEntry[] = []
 
-    return {
-      id: text(session.id, `${where} id`, source),
-      date: text(session.date, `${where} date`, source),
-      name: text(session.name ?? 'Freelap session', `${where} name`, source),
-      athlete: text(session.athlete ?? 'unknown', `${where} athlete`, source),
-      runCount: number(session.run_count ?? 0, `${where} run count`, source),
-      bestS: number(session.best_time_s ?? 0, `${where} best time`, source),
+  for (let i = 0; i < sessions.length; i++) {
+    try {
+      const session = sessions[i] as Record<string, unknown>
+      const where = `session ${i + 1} of the list`
+
+      entries.push({
+        id: text(session.id, `${where} id`, source),
+        date: text(session.date, `${where} date`, source),
+        name: text(session.name ?? 'Freelap session', `${where} name`, source),
+        athlete: text(session.athlete ?? 'unknown', `${where} athlete`, source),
+        runCount: number(session.run_count ?? 0, `${where} run count`, source),
+        bestS: number(session.best_time_s ?? 0, `${where} best time`, source),
+      })
+    } catch (error) {
+      if (!(error instanceof AdapterDegradedError)) throw error
     }
-  })
+  }
+
+  return entries
 }
 
 export function readSessionDetail(payload: MyFreelapSessionDetail, source: string): SessionDetail {
   const runs = payload.runs
   if (!Array.isArray(runs) || runs.length === 0) throw degraded(source, 'the session detail carried no runs')
 
+  const validRuns: MyFreelapRun[] = []
+  const skippedRuns: SkippedRun[] = []
+
+  for (let i = 0; i < runs.length; i++) {
+    try {
+      validRuns.push(readRun(runs[i] as Record<string, unknown>, i, source))
+    } catch (error) {
+      if (!(error instanceof AdapterDegradedError)) throw error
+      skippedRuns.push({ index: i + 1, reason: error.message })
+    }
+  }
+
+  if (validRuns.length === 0) {
+    throw degraded(source, 'every run in the session was malformed')
+  }
+
   return {
     id: text(payload.id, 'the session id', source),
     name: text(payload.name ?? 'Freelap session', 'the session name', source),
     athlete: text(payload.athlete ?? 'unknown', 'the athlete name', source),
     distanceM: optionalNumber(payload.distance_m, 'the session distance', source),
-    runs: runs.map((run: Record<string, unknown>, index) => readRun(run, index, source)),
+    runs: validRuns,
+    skippedRuns,
   }
 }
 

@@ -11,7 +11,7 @@ async function main(): Promise<void> {
   const server = createServer(createWebApp(runtime.web))
 
   server.listen(runtime.config.port, () => {
-    console.log(`Freelap sync listening on http://localhost:${runtime.config.port}`)
+    runtime.logger.info('Freelap sync listening', { port: runtime.config.port })
   })
 
   const shutDown = (): void => {
@@ -22,6 +22,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error(`The web app could not start: ${(error as Error).message}`)
+  process.stderr.write(`The web app could not start: ${(error as Error).message}\n`)
   process.exitCode = 1
 })

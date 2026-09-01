@@ -12,6 +12,9 @@ import { aTestDatabase } from '../support/test-database'
 const aCompleteEnvironment = (): NodeJS.ProcessEnv => ({
   DATABASE_URL: 'postgres://localhost/freelap',
   SESSION_COOKIE_SECRET: 'cookie-secret',
+  CSRF_SECRET: 'csrf-secret',
+  WEBHOOK_SECRET: 'test-webhook-secret-at-least-128-bits',
+  METRICS_SECRET: 'test-metrics-secret',
   INTERVALS_ICU_CLIENT_ID: 'client-id',
   INTERVALS_ICU_CLIENT_SECRET: 'client-secret',
   INTERVALS_ICU_REDIRECT_URI: 'https://sync.example/oauth/callback',
@@ -37,11 +40,39 @@ describe('configFromEnvironment', () => {
     expect(() => configFromEnvironment(incomplete)).toThrow(/INTERVALS_ICU_CLIENT_SECRET must be set/)
   })
 
+  it('defaults the body-size cap to 5 MB and respects the override', () => {
+    expect(configFromEnvironment(aCompleteEnvironment()).maxRequestBodyBytes).toBe(5_242_880)
+    expect(
+      configFromEnvironment({ ...aCompleteEnvironment(), MAX_REQUEST_BODY_BYTES: '1048576' }).maxRequestBodyBytes,
+    ).toBe(1_048_576)
+  })
+
   it('keeps the unofficial MyFreelap adapter off unless an operator turns it on', () => {
     expect(configFromEnvironment(aCompleteEnvironment()).flags.myfreelapWebAdapter).toBe(false)
     expect(
       configFromEnvironment({ ...aCompleteEnvironment(), FREELAP_WEB_ADAPTER: 'on' }).flags.myfreelapWebAdapter,
     ).toBe(true)
+  })
+
+  it('defaults outbound rate limits and respects overrides', () => {
+    const defaults = configFromEnvironment(aCompleteEnvironment())
+
+    expect(defaults.icuRateLimit).toEqual({ ratePerSecond: 5, burst: 10 })
+    expect(defaults.myfreelapRateLimit).toEqual({ ratePerSecond: 0.5, burst: 3 })
+
+    const overridden = configFromEnvironment({
+      ...aCompleteEnvironment(),
+      ICU_RATE_LIMIT: '2,5',
+      MYFREELAP_RATE_LIMIT: '1,2',
+    })
+
+    expect(overridden.icuRateLimit).toEqual({ ratePerSecond: 2, burst: 5 })
+    expect(overridden.myfreelapRateLimit).toEqual({ ratePerSecond: 1, burst: 2 })
+  })
+
+  it('rejects a malformed rate limit', () => {
+    expect(() => configFromEnvironment({ ...aCompleteEnvironment(), ICU_RATE_LIMIT: 'not-a-number' }))
+      .toThrow(/Invalid rate limit/)
   })
 })
 
@@ -72,10 +103,18 @@ describe('buildRuntime', () => {
     try {
       expect(await (await fetch(`${base}/healthz`)).text()).toBe('ok')
 
+      const signInPage = await fetch(`${base}/sign-in`)
+      const nonce = signInPage.headers.get('set-cookie')?.split(';')[0] ?? ''
+      const pageHtml = await signInPage.text()
+      const csrf = /name="_csrf"\s+value="([^"]+)"/.exec(pageHtml)?.[1] ?? ''
+
       const signedIn = await fetch(`${base}/sign-in`, {
         method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ email: 'athlete@example.com' }).toString(),
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          ...(nonce ? { cookie: nonce } : {}),
+        },
+        body: new URLSearchParams({ _csrf: csrf, email: 'athlete@example.com' }).toString(),
         redirect: 'manual',
       })
 

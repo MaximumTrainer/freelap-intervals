@@ -56,12 +56,13 @@ const READS_THE_ENVIRONMENT = [
   'src/config.ts',
   'src/cli/main.ts',
   'src/db/migrate-cli.ts',
+  'src/security/reseal-cli.ts',
   'src/ingest/freelap-sources.ts',
   'src/security/local-kms.ts',
 ]
 
-/** AGENTS.md §4.6 — process entry points write to the console; nothing else does. See issue #25. */
-const WRITES_TO_THE_CONSOLE = ['src/cli/**', 'src/web/main.ts', 'src/worker/main.ts', 'src/db/migrate-cli.ts']
+/** AGENTS.md §4.6 — CLI uses console for user-facing output; everything else uses the Logger port (O3 / #25). */
+const WRITES_TO_THE_CONSOLE = ['src/cli/**']
 
 export default tseslint.config(
   { ignores: ['node_modules/**', 'coverage/**', '**/*.d.ts'] },

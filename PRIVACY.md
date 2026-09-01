@@ -42,6 +42,13 @@ time, and if it does the app tells you and falls back to CSV upload. Fetching ha
 ask; there is no background polling. You can delete your stored login at any moment, and it is
 deleted immediately rather than marked deleted.
 
+## Data retention
+
+Finished background work is deleted after 7 days (30 days if it failed). Expired sign-in sessions
+are deleted after 30 days. Abandoned OAuth authorization states are deleted after 1 hour. The audit
+log is kept for 2 years — longer than everything else, so we can answer questions about what the
+app did on your behalf. These windows run nightly and can be configured by the operator.
+
 ## Your control
 
 - **Disconnect** either account at any time. The stored credentials are deleted, not deactivated.

@@ -70,6 +70,48 @@ describe('readSessions', () => {
     expect(session?.athleteRef).toBe('unknown')
   })
 
+  it('keeps a session that spans midnight as one session', () => {
+    const sessions = readSessions(csvFixture('crosses-midnight.csv'), inLondon)
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]?.reps).toHaveLength(6)
+    expect(sessions[0]?.startedAt).toBe('2026-08-29T23:10:00+01:00')
+  })
+
+  it('still splits genuinely separate sessions on the same day', () => {
+    const sessions = readSessions(csvFixture('two-sessions.csv'), inLondon)
+
+    expect(sessions.map((session) => [session.exerciseName, session.reps.length])).toEqual([
+      ['Flying 30m', 2],
+      ['60m from blocks', 1],
+      ['Flying 30m', 1],
+    ])
+  })
+
+  it('groups reverse-ordered reps the same as forward-ordered', () => {
+    const csv = [
+      'Date;Time;Exercise;Run;Total time (s)',
+      '29/08/2026;10:19:02;Flying 30m;3;3,51',
+      '29/08/2026;10:14:03;Flying 30m;1;3,42',
+      '29/08/2026;10:16:31;Flying 30m;2;3,38',
+    ].join('\n')
+    const sessions = readSessions(csv, inLondon)
+
+    expect(sessions).toHaveLength(1)
+    expect(sessions[0]?.reps).toHaveLength(3)
+  })
+
+  it('falls back to date grouping when wall clocks are missing', () => {
+    const csv = [
+      'Date;Exercise;Run;Total time (s)',
+      '29/08/2026;Flying 30m;1;3,42',
+      '30/08/2026;Flying 30m;2;3,38',
+    ].join('\n')
+    const sessions = readSessions(csv, inLondon)
+
+    expect(sessions).toHaveLength(2)
+  })
+
   it('rejects an export with a header but no rows', () => {
     expect(() => readSessions('Date;Run;Total time (s)', inLondon)).toThrow(/no rows/i)
   })

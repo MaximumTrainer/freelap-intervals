@@ -7,6 +7,7 @@ export interface RouteMatch<Context> {
 
 interface Route<Context> {
   readonly method: string
+  readonly path: string
   readonly matcher: RegExp
   readonly handler: (context: Context) => Promise<WebResponse>
 }
@@ -34,12 +35,17 @@ export class Router<Context> {
     return null
   }
 
+  /** Every registered path and its method, for tests that need to assert coverage. */
+  get registeredPaths(): ReadonlyArray<{ method: string; path: string }> {
+    return this.routes.map(({ method, path }) => ({ method, path }))
+  }
+
   private add(method: string, path: string, handler: (context: Context) => Promise<WebResponse>): this {
     const pattern = path
       .split('/')
       .map((segment) => (segment.startsWith(':') ? `(?<${segment.slice(1)}>[^/]+)` : escapeForRegex(segment)))
       .join('/')
-    this.routes.push({ method, matcher: new RegExp(`^${pattern}$`), handler })
+    this.routes.push({ method, path, matcher: new RegExp(`^${pattern}$`), handler })
 
     return this
   }

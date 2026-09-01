@@ -84,8 +84,13 @@ export class OAuthClient {
     })
   }
 
+  /** The scopes this client will request. Exposed so the connect screen can display them. */
+  get requestedScopes(): readonly string[] {
+    return this.options.scopes ?? DEFAULT_SCOPES
+  }
+
   private scopes(): string[] {
-    return [...(this.options.scopes ?? DEFAULT_SCOPES)]
+    return [...this.requestedScopes]
   }
 
   private async postToken(fields: Record<string, string>): Promise<TokenResponse> {

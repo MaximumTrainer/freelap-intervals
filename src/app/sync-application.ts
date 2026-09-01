@@ -12,6 +12,7 @@ import { inspectCsv, readSessions } from '~/ingest/csv/csv-adapter'
 import type { LedgerEntry, SyncLedger } from '~/ledger/sync-ledger'
 import type { ActivityCandidate } from '~/match/matcher'
 import { rankCandidates, searchWindowFor } from '~/match/matcher'
+import { suggestOffset } from '~/match/offset-suggestion'
 import type { VerificationReport } from '~/verify/verifier'
 import { verifySync } from '~/verify/verifier'
 import { ActivityWriter, WriteStepError } from '~/write/activity-writer'
@@ -46,6 +47,8 @@ export interface SyncOutcome {
   readonly mode: SyncChoice['mode']
   readonly verification: VerificationReport
   readonly entry: LedgerEntry
+  /** Set when the write was skipped because the content, activity and offset are unchanged. */
+  readonly skipped?: true
 }
 
 export interface CsvImportResult {
@@ -59,11 +62,17 @@ export interface SyncPreview {
   readonly stream: { readonly time: number[]; readonly speed: number[] } | null
   /** Where each rep starts, in seconds from the start of that activity. */
   readonly repOffsetsS: number[]
+  /** True when the recommended activity exists but has no recorded streams (Mode A cannot work). */
+  readonly noStreams?: boolean
+  /** Clock offset suggested by cross-correlating rep windows against the speed stream. */
+  readonly suggestedOffsetS: number | null
 }
 
 export interface SyncOptions {
   /** Nudge, in seconds, for clock drift when attaching to a watch recording. */
   readonly offsetS?: number
+  /** Bypass the content-hash short-circuit and force a full write. */
+  readonly force?: boolean
 }
 
 /**
@@ -149,7 +158,43 @@ export class SyncApplication {
   async sync(sourceId: string, choice: SyncChoice, options: SyncOptions = {}): Promise<SyncOutcome> {
     const session = await this.requireSession(sourceId)
     const timezone = await this.timezone()
+    const hash = intendedContentHash(session)
 
+    const skip = !options.force && await this.canSkipWrite(sourceId, choice, hash, options.offsetS)
+    if (skip) {
+      const verification = await verifySync(this.icu, {
+        session,
+        activityId: skip.activityId,
+        timezone,
+        ...(options.offsetS === undefined ? {} : { offsetS: options.offsetS }),
+      })
+
+      if (verification.status === 'fail') {
+        return this.fullSync(sourceId, choice, options)
+      }
+
+      const entry: LedgerEntry = {
+        ...skip,
+        status: 'synced',
+        syncedAt: this.now().toISOString(),
+        verification,
+      }
+      await this.ledger.save(entry)
+
+      return { activityId: skip.activityId, mode: skip.mode, verification, entry, skipped: true }
+    }
+
+    return this.fullSync(sourceId, choice, options)
+  }
+
+  private async fullSync(
+    sourceId: string,
+    choice: SyncChoice,
+    options: SyncOptions,
+  ): Promise<SyncOutcome> {
+    const session = await this.requireSession(sourceId)
+    const timezone = await this.timezone()
+    const hash = intendedContentHash(session)
     const outcome = await this.writeOrRecordFailure(session, choice, timezone, options)
     const verification = await verifySync(this.icu, {
       session,
@@ -163,13 +208,32 @@ export class SyncApplication {
       activityId: outcome.activityId,
       mode: outcome.mode,
       status: verification.status === 'fail' ? 'failed' : 'synced',
-      contentHash: intendedContentHash(session),
+      contentHash: hash,
       syncedAt: this.now().toISOString(),
+      ...(options.offsetS === undefined ? {} : { offsetS: options.offsetS }),
       verification,
     }
     await this.ledger.save(entry)
 
     return { activityId: outcome.activityId, mode: outcome.mode, verification, entry }
+  }
+
+  private async canSkipWrite(
+    sourceId: string,
+    choice: SyncChoice,
+    hash: string,
+    offsetS: number | undefined,
+  ): Promise<LedgerEntry | null> {
+    const previous = await this.ledger.findBySourceId(sourceId)
+    if (!previous) return null
+    if (previous.status !== 'synced') return null
+    if (previous.verification?.status !== 'pass') return null
+    if (previous.contentHash !== hash) return null
+    if (choice.mode === 'create-new') return null
+    if (previous.activityId !== choice.activityId) return null
+    if ((previous.offsetS ?? 0) !== (offsetS ?? 0)) return null
+
+    return previous
   }
 
   /**
@@ -180,7 +244,11 @@ export class SyncApplication {
     const timeline = buildTimeline(plan.session)
 
     if (plan.recommendation.mode !== 'attach') {
-      return { stream: null, repOffsetsS: timeline.laps.map((lap) => lap.startS) }
+      return {
+        stream: null,
+        repOffsetsS: timeline.laps.map((lap) => lap.startS),
+        suggestedOffsetS: null,
+      }
     }
 
     const activityId = plan.recommendation.activityId
@@ -189,9 +257,18 @@ export class SyncApplication {
       originEpochMs: epochMsOfLocal(activity.start_date_local, await this.timezone()),
     })
 
+    const suggestion = suggestOffset({
+      streamTimes: [...streams.time],
+      speeds: [...(streams.velocity_smooth ?? [])],
+      repWindows: planned.map((interval) => ({ startS: interval.startS, endS: interval.endS })),
+      searchRangeS: 120,
+    })
+
     return {
       stream: thinnedForDrawing(streams),
       repOffsetsS: planned.map((interval) => interval.startS),
+      suggestedOffsetS: suggestion?.offsetS ?? null,
+      ...(streams.time.length === 0 ? { noStreams: true } : {}),
     }
   }
 
@@ -246,7 +323,11 @@ export class SyncApplication {
       status: 'failed',
       contentHash: intendedContentHash(session),
       syncedAt: this.now().toISOString(),
-      ...(error instanceof WriteStepError ? { failedStep: error.step } : {}),
+      ...(error instanceof WriteStepError ? {
+        failedStep: error.step,
+        completedSteps: error.completedSteps,
+        rollback: error.rollback,
+      } : {}),
     })
   }
 

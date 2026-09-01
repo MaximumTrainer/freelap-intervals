@@ -21,10 +21,20 @@ export function connectRoutes(router: Router<RequestContext>): void {
     if (!code || !state) return html(messagePage('Connection failed', 'intervals.icu sent us back without a code.'), 400)
 
     const issued = await context.deps.oauthStates.consume(state)
-    if (!issued) return html(messagePage('Connection failed', 'That authorization has already been used.'), 400)
+    if (!issued) {
+      await context.deps.audit.record(null, {
+        action: 'oauth state rejected',
+        target: context.url.pathname,
+        outcome: 'error',
+        statusCode: 400,
+        detail: {},
+      })
+      return html(messagePage('Connection failed', 'That link has expired or was already used — please connect again.'), 400)
+    }
 
     const tokens = await context.deps.oauth.exchangeCode(code)
     await context.deps.connections.saveIntervalsIcu(issued.userId, tokens)
+    context.deps.connectionProbe.clearCache(issued.userId)
     await context.deps.audit.record(issued.userId, {
       action: 'intervals.icu connected',
       target: tokens.athleteId,
@@ -44,6 +54,7 @@ export function connectRoutes(router: Router<RequestContext>): void {
     if (!username || !password) return html(messagePage('Not connected', 'Both an email and a password are needed.'), 400)
 
     await context.deps.connections.saveFreelap(userId, { username, password: new Secret(password) })
+    context.deps.connectionProbe.clearCache(userId)
     await context.deps.audit.record(userId, {
       action: 'myfreelap credentials stored',
       target: username,
@@ -66,6 +77,8 @@ export function connectRoutes(router: Router<RequestContext>): void {
       statusCode: null,
       detail: { requestedByAthlete: true },
     })
+    context.deps.connectionProbe.clearCache(userId)
+    await context.deps.sessions.revokeAllForUser(userId)
     await context.deps.users.purge(userId)
 
     return redirect('/sign-in', { 'set-cookie': context.deps.sessionCookie.clear() })
@@ -76,6 +89,7 @@ export function connectRoutes(router: Router<RequestContext>): void {
     const provider = context.params.provider === 'myfreelap' ? 'myfreelap' : 'intervals_icu'
 
     await context.deps.connections.disconnect(userId, provider)
+    context.deps.connectionProbe.clearCache(userId)
     await context.deps.audit.record(userId, {
       action: `${provider} disconnected`,
       target: null,

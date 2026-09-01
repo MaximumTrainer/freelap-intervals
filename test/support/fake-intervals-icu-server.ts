@@ -137,6 +137,11 @@ export class FakeIntervalsIcuServer {
 
     if (segments.length === 2 && method === 'GET') return this.icu.getActivity(activityId)
 
+    if (segments.length === 2 && method === 'DELETE') {
+      await this.icu.deleteActivity(activityId)
+      return {}
+    }
+
     if (segments.length === 2 && method === 'PUT') {
       const [patch, customFields] = splitActivityBody(json())
       if (Object.keys(customFields).length > 0) await this.icu.setCustomFields(activityId, customFields)

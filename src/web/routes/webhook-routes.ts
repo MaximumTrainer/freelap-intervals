@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto'
+
 import { enqueueVerify } from '~/jobs/sync-jobs'
 
 import { json, noContent } from '../http'
@@ -10,24 +12,95 @@ interface IntervalsIcuWebhook {
   readonly type?: string
 }
 
-const CHANGE_EVENTS = new Set(['ACTIVITY_UPDATED', 'ACTIVITY_DELETED', 'ACTIVITY_CREATED'])
+const CHANGE_EVENTS = new Set([
+  'ACTIVITY_UPDATED',
+  'ACTIVITY_DELETED',
+  'ACTIVITY_CREATED',
+])
+
+/** The single response for every authenticated request, matched or not — no enumeration oracle. */
+const ACCEPTED = json({ accepted: true }, 202)
 
 /**
- * intervals.icu tells us when an activity changed. If it is one we wrote, the sync is re-verified
- * in the background, so an edit made over there shows up here as drift rather than going unnoticed.
+ * intervals.icu tells us when an activity changed. The URL carries a high-entropy secret so only
+ * the real caller reaches the handler; rate limiting and dedup protect the queue from misuse.
  */
 export function webhookRoutes(router: Router<RequestContext>): void {
-  router.post('/webhooks/intervals-icu', async (context) => {
-    const event = context.body.json<IntervalsIcuWebhook>()
-    if (!event.activity_id || !event.athlete_id || !CHANGE_EVENTS.has(event.type ?? '')) {
-      return json({ ignored: true }, 200)
+  router.post('/webhooks/intervals-icu/:secret', async (context) => {
+    const rejection = rejectIfBadSecret(context)
+    if (rejection) {
+      await auditRejection(context, 'bad secret')
+
+      return rejection
     }
 
-    const location = await context.deps.directory.findByActivity(String(event.athlete_id), event.activity_id)
-    if (!location) return json({ ignored: true }, 200)
+    const ip = context.url.hostname
+    const rateLimitKey = `ip:${ip}`
+    if (!context.deps.webhookRateLimiter.allow(rateLimitKey)) {
+      await auditRejection(context, 'rate limited')
+      const retryAfter = context.deps.webhookRateLimiter.retryAfterS(rateLimitKey)
 
-    await enqueueVerify(context.deps.queue, { userId: location.userId, sourceId: location.sourceId })
+      return json(
+        { error: 'rate limited' },
+        429,
+        { 'retry-after': String(retryAfter) },
+      )
+    }
 
-    return noContent(202)
+    const event = context.body.json<IntervalsIcuWebhook>()
+    if (!event.activity_id || !event.athlete_id || !CHANGE_EVENTS.has(event.type ?? '')) {
+      return ACCEPTED
+    }
+
+    const athleteId = String(event.athlete_id)
+    const athleteKey = `athlete:${athleteId}`
+    if (!context.deps.webhookRateLimiter.allow(athleteKey)) {
+      await auditRejection(context, 'rate limited')
+      const retryAfter = context.deps.webhookRateLimiter.retryAfterS(athleteKey)
+
+      return json(
+        { error: 'rate limited' },
+        429,
+        { 'retry-after': String(retryAfter) },
+      )
+    }
+
+    const dedupKey = `${athleteId}:${event.activity_id}`
+    if (context.deps.webhookDedup.isDuplicate(dedupKey)) return ACCEPTED
+
+    const location = await context.deps.directory.findByActivity(athleteId, event.activity_id)
+    if (!location) return ACCEPTED
+
+    await enqueueVerify(context.deps.queue, {
+      userId: location.userId,
+      sourceId: location.sourceId,
+      requestId: context.requestId,
+    })
+
+    return ACCEPTED
+  })
+}
+
+function rejectIfBadSecret(context: RequestContext): ReturnType<typeof noContent> | null {
+  const submitted = context.params.secret ?? ''
+  const expected = context.deps.webhookSecret
+
+  const a = Buffer.from(submitted)
+  const b = Buffer.from(expected)
+
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return noContent(404)
+  }
+
+  return null
+}
+
+async function auditRejection(context: RequestContext, reason: string): Promise<void> {
+  await context.deps.audit.record(null, {
+    action: 'webhook rejected',
+    target: '/webhooks/intervals-icu',
+    outcome: 'error',
+    statusCode: reason === 'rate limited' ? 429 : 404,
+    detail: { reason },
   })
 }

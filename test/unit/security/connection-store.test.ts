@@ -107,10 +107,61 @@ describe('ConnectionStore', () => {
     await store.saveFreelap(userId, { username: 'dan@example.com', password: new Secret('hunter2') })
 
     kms.rotateTo('key-2')
-    expect(await store.resealAll()).toBe(2)
+    const result = await store.resealAll()
+    expect(result).toMatchObject({ resealed: 2, skipped: 0, failed: [] })
 
     expect(await rawSecretColumn()).not.toContain('key-1')
     expect((await store.findIntervalsIcu(userId))?.tokens.accessToken.reveal()).toBe('access-abc')
     expect((await store.findFreelap(userId))?.credentials.password.reveal()).toBe('hunter2')
+  })
+
+  it('skips connections already sealed under the target key', async () => {
+    await store.saveIntervalsIcu(userId, someTokens)
+    await store.saveFreelap(userId, { username: 'dan@example.com', password: new Secret('hunter2') })
+    kms.rotateTo('key-2')
+    await store.resealAll()
+
+    const result = await store.resealAll()
+
+    expect(result).toMatchObject({ resealed: 0, skipped: 2 })
+  })
+
+  it('isolates errors: one corrupt envelope does not abort the others', async () => {
+    await store.saveIntervalsIcu(userId, someTokens)
+    await store.saveFreelap(userId, { username: 'dan@example.com', password: new Secret('hunter2') })
+    await database.query(
+      `update connections set secret_envelope = 'v1.key-1.garbage.garbage.garbage.garbage'
+       where provider = 'myfreelap'`,
+    )
+
+    kms.rotateTo('key-2')
+    const result = await store.resealAll()
+
+    expect(result.resealed).toBe(1)
+    expect(result.failed).toHaveLength(1)
+    expect(result.failed[0]).toMatchObject({ userId, provider: 'myfreelap' })
+    expect((await store.findIntervalsIcu(userId))?.tokens.accessToken.reveal()).toBe('access-abc')
+  })
+
+  it('reports without changing anything when asked for a dry run', async () => {
+    await store.saveIntervalsIcu(userId, someTokens)
+    const envelopeBefore = await rawSecretColumn()
+
+    kms.rotateTo('key-2')
+    const result = await store.resealAll({ dryRun: true })
+
+    expect(result).toMatchObject({ resealed: 0, skipped: 0, wouldReseal: 1 })
+    expect(await rawSecretColumn()).toBe(envelopeBefore)
+  })
+
+  it('calls the progress callback for each connection processed', async () => {
+    await store.saveIntervalsIcu(userId, someTokens)
+    await store.saveFreelap(userId, { username: 'dan@example.com', password: new Secret('hunter2') })
+
+    kms.rotateTo('key-2')
+    const progress: Array<{ current: number; total: number }> = []
+    await store.resealAll({ onProgress: (current, total) => progress.push({ current, total }) })
+
+    expect(progress).toEqual([{ current: 1, total: 2 }, { current: 2, total: 2 }])
   })
 })

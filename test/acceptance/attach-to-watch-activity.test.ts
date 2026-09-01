@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { NoStreamsError, WriteStepError } from '~/write/activity-writer'
+
 import { csvFixture } from '../support/fixtures'
 import { oneHzStreams } from '../support/streams'
 import { aTestApp, theOnlySession } from '../support/test-app'
@@ -65,6 +67,60 @@ describe('syncing a Freelap session onto the watch recording of the same session
 
     expect(outcome.verification.status).toBe('pass')
     expect(icu.intervalsOf(watchRun.id)[0]).toMatchObject({ start_index: 231, end_index: 234 })
+  })
+
+  it('refuses to attach to an activity with no streams and records the failure', async () => {
+    const { app, icu, ledger } = aTestApp()
+    const manualActivity = icu.givenActivity({ start_date_local: '2026-08-29T10:10:00', name: 'Manual Entry' })
+
+    const session = theOnlySession(await app.importCsv(csvFixture('flying-30m-semicolon.csv')))
+
+    try {
+      await app.sync(session.sourceId, { mode: 'attach', activityId: manualActivity.id })
+      expect.unreachable('should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(WriteStepError)
+      expect((error as WriteStepError).step).toBe('intervals')
+      expect((error as WriteStepError).cause).toBeInstanceOf(NoStreamsError)
+    }
+
+    expect(icu.intervalsOf(manualActivity.id)).toEqual([])
+    expect(icu.activity(manualActivity.id).description).toBeNull()
+
+    const entry = await ledger.findBySourceId(session.sourceId)
+    expect(entry).toMatchObject({ status: 'failed', failedStep: 'intervals' })
+  })
+
+  it('falls back to Mode B after a no-streams refusal, creating a new activity', async () => {
+    const { app, icu, ledger } = aTestApp()
+    icu.givenActivity({ start_date_local: '2026-08-29T10:10:00', name: 'Manual Entry' })
+
+    const session = theOnlySession(await app.importCsv(csvFixture('flying-30m-semicolon.csv')))
+
+    await expect(app.sync(session.sourceId, { mode: 'attach', activityId: 'a1' })).rejects.toThrow()
+
+    const fallback = await app.sync(session.sourceId, { mode: 'create-new' })
+
+    expect(fallback.verification.status).toBe('pass')
+    expect(icu.activityCount).toBe(2)
+
+    const entry = await ledger.findBySourceId(session.sourceId)
+    expect(entry).toMatchObject({ status: 'synced', mode: 'create-new' })
+  })
+
+  it('flags a stream-less activity in the preview', async () => {
+    const { app, icu } = aTestApp()
+    icu.givenActivity({ start_date_local: '2026-08-29T10:10:00', name: 'Manual Entry' })
+
+    const session = theOnlySession(await app.importCsv(csvFixture('flying-30m-semicolon.csv')))
+    const plan = await app.planSync(session.sourceId)
+
+    expect(plan.recommendation).toEqual({ mode: 'attach', activityId: 'a1' })
+
+    const preview = await app.previewFor(plan)
+
+    expect(preview.stream).toBeNull()
+    expect(preview.noStreams).toBe(true)
   })
 
   it('refuses to claim an activity that already belongs to another Freelap session', async () => {

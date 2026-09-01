@@ -60,6 +60,8 @@ export interface IntervalsIcuClient {
   listActivities(athleteId: string, range: DateRange): Promise<IcuActivity[]>
   getActivity(activityId: string): Promise<IcuActivity>
   updateActivity(activityId: string, patch: ActivityPatch): Promise<IcuActivity>
+  /** Permanently removes an activity. Used to compensate a failed create-mode sync. */
+  deleteActivity(activityId: string): Promise<void>
   getStreams(activityId: string): Promise<IcuStreams>
   getIntervals(activityId: string): Promise<IcuInterval[]>
   putIntervals(activityId: string, intervals: readonly IcuInterval[]): Promise<void>
@@ -73,6 +75,7 @@ export class IntervalsIcuError extends Error {
     message: string,
     readonly status: number,
     readonly retryable: boolean,
+    readonly retryAfterS?: number,
   ) {
     super(message)
     this.name = 'IntervalsIcuError'

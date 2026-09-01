@@ -104,4 +104,8 @@ describe('nearestIndex', () => {
     expect(nearestIndex(times, -10)).toBe(0)
     expect(nearestIndex(times, 99)).toBe(5)
   })
+
+  it('throws on an empty array rather than returning a misleading zero', () => {
+    expect(() => nearestIndex([], 3)).toThrow(/empty/)
+  })
 })

@@ -1,41 +1,49 @@
+import type { AlertGate } from '~/alerting/alert-gate'
 import type { AuditLog } from '~/audit/audit-log'
-import type { FreelapSources } from '~/ingest/freelap-sources'
-import type { ConnectionStore } from '~/security/connection-store'
+import type { FreelapSource } from '~/ingest/freelap-source'
 
-import type { Job } from './job-queue'
+import type { AdapterHealthStore } from './adapter-health'
 import type { JobHandler } from './worker'
 
 export const FREELAP_CANARY = 'freelap-canary'
 
-export interface CanaryPayload extends Record<string, unknown> {
-  readonly userId: string
-}
-
 /**
- * The nightly check on the unofficial MyFreelap adapter. A layout change or a new login wall shows
- * up here first: the connection is marked degraded, the athlete is steered back to CSV upload, and
- * the audit log carries the reason for whoever has to fix the adapter.
+ * The nightly check on the unofficial MyFreelap adapter, authenticating as a dedicated test
+ * account — never as a real athlete. A layout change or a new login wall shows up here first:
+ * the global adapter health is marked degraded, and the alert from S7 fires. No individual
+ * athlete's connection is touched.
  */
 export function canaryJobHandlers(
-  connections: ConnectionStore,
-  sources: FreelapSources,
+  health: AdapterHealthStore,
+  canarySource: FreelapSource,
   audit: AuditLog,
+  alerts?: AlertGate,
 ): Record<string, JobHandler> {
   return {
-    [FREELAP_CANARY]: async (job: Job) => {
-      const { userId } = job.payload as unknown as CanaryPayload
-      const source = await sources.webSourceFor(userId)
-      if (!source) return
+    [FREELAP_CANARY]: async () => {
+      const result = await canarySource.checkHealth()
 
-      const health = await source.checkHealth()
-      await connections.markStatus(userId, 'myfreelap', health.healthy ? 'active' : 'degraded')
-      await audit.record(userId, {
+      await health.update('myfreelap', result.healthy ? 'active' : 'degraded', result.reason ?? null)
+
+      await audit.record(null, {
         action: 'myfreelap canary',
-        target: source.name,
-        outcome: health.healthy ? 'ok' : 'error',
+        target: canarySource.name,
+        outcome: result.healthy ? 'ok' : 'error',
         statusCode: null,
-        detail: health.healthy ? {} : { reason: health.reason ?? 'unknown' },
+        detail: result.healthy ? {} : { reason: result.reason ?? 'unknown' },
       })
+
+      if (alerts) {
+        if (!result.healthy) {
+          await alerts.fire('canary:myfreelap', {
+            severity: 'critical',
+            title: 'MyFreelap adapter degraded',
+            detail: { reason: result.reason ?? 'unknown' },
+          })
+        } else {
+          await alerts.recover('canary:myfreelap')
+        }
+      }
     },
   }
 }

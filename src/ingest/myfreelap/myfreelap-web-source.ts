@@ -2,6 +2,8 @@ import type { Rep, SprintSession } from '~/domain/sprint-session'
 import { summariseReps } from '~/domain/sprint-session'
 import { kmhToMps, roundTo, speedFrom } from '~/domain/units'
 import { toZonedIso } from '~/domain/zoned-time'
+import type { OutboundRateLimiter } from '~/outbound-rate-limiter'
+import { NoopRateLimiter } from '~/outbound-rate-limiter'
 import type { FreelapCredentials } from '~/security/connection-store'
 
 import type { DateWindow, FreelapSource, HealthReport, SessionSummary } from '../freelap-source'
@@ -14,6 +16,8 @@ export interface MyFreelapWebSourceOptions {
   readonly timezone: string
   readonly baseUrl?: string
   readonly fetch?: typeof fetch
+  readonly limiter?: OutboundRateLimiter
+  readonly limiterKeys?: readonly string[]
 }
 
 const SOURCE_NAME = 'MyFreelap web'
@@ -33,11 +37,15 @@ export class MyFreelapWebSource implements FreelapSource {
 
   private readonly http: typeof fetch
   private readonly baseUrl: string
+  private readonly limiter: OutboundRateLimiter
+  private readonly limiterKeys: readonly string[]
   private sessionToken: string | null = null
 
   constructor(private readonly options: MyFreelapWebSourceOptions) {
     this.http = options.fetch ?? globalThis.fetch
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '')
+    this.limiter = options.limiter ?? new NoopRateLimiter()
+    this.limiterKeys = options.limiterKeys ?? []
   }
 
   async listSessions(window: DateWindow): Promise<SessionSummary[]> {
@@ -135,10 +143,15 @@ export class MyFreelapWebSource implements FreelapSource {
 
   private async send(path: string, token: string): Promise<Response> {
     try {
+      for (const key of this.limiterKeys) {
+        await this.limiter.acquire(key)
+      }
+
       return await this.http(`${this.baseUrl}${path}`, {
         headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
       })
     } catch (cause) {
+      if (cause instanceof AdapterDegradedError) throw cause
       throw new AdapterDegradedError(SOURCE_NAME, `${path} could not be reached`, { cause })
     }
   }
@@ -161,6 +174,10 @@ export class MyFreelapWebSource implements FreelapSource {
 
   private async login(): Promise<Response> {
     try {
+      for (const key of this.limiterKeys) {
+        await this.limiter.acquire(key)
+      }
+
       return await this.http(`${this.baseUrl}/auth/login`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -170,6 +187,7 @@ export class MyFreelapWebSource implements FreelapSource {
         }),
       })
     } catch (cause) {
+      if (cause instanceof AdapterDegradedError) throw cause
       throw new AdapterDegradedError(SOURCE_NAME, 'sign in could not be reached', { cause })
     }
   }

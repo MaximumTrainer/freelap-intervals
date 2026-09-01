@@ -28,11 +28,28 @@ export interface WriteOutcome {
   readonly completedSteps: readonly WriteStep[]
 }
 
+/**
+ * Mode A was attempted against an activity with no recorded streams — the reps cannot be aligned
+ * to the recording because there is no recording. The athlete should create a new activity instead.
+ */
+export class NoStreamsError extends Error {
+  constructor(readonly activityId: string) {
+    super(
+      `Activity ${activityId} has no recorded data to align the reps against. `
+        + 'Create a new activity from the Freelap timings instead.',
+    )
+    this.name = 'NoStreamsError'
+  }
+}
+
+export type RollbackOutcome = 'ok' | 'failed' | 'skipped'
+
 export class WriteStepError extends Error {
   constructor(
     readonly step: WriteStep,
     readonly completedSteps: readonly WriteStep[],
     cause: unknown,
+    readonly rollback: RollbackOutcome = 'skipped',
   ) {
     super(`Sync failed at the ${step} step: ${(cause as Error).message}`, { cause })
     this.name = 'WriteStepError'
@@ -44,7 +61,8 @@ export class WriteStepError extends Error {
  * or by layering Freelap precision onto a watch recording that already exists.
  *
  * Steps run in a fixed order — activity, intervals, custom fields, description — so a failure
- * half way through can be reported against the step it stopped at, and resumed.
+ * half way through can be reported against the step it stopped at, and resumed. When a step
+ * fails, the writer compensates the completed steps in reverse order before rethrowing.
  */
 export class ActivityWriter {
   constructor(private readonly icu: IntervalsIcuClient) {}
@@ -64,11 +82,79 @@ export class ActivityWriter {
     const activity = await step('activity', () => this.openActivity(request))
     const streams = await this.icu.getStreams(activity.id)
 
-    await step('intervals', () => this.writeIntervals(request, activity, [...streams.time]))
-    await step('custom-fields', () => this.writeCustomFields(request, activity.id))
-    await step('description', () => this.writeDescription(request, activity))
+    if (request.choice.mode === 'attach' && streams.time.length === 0) {
+      throw new WriteStepError('intervals', ['activity'], new NoStreamsError(activity.id))
+    }
+
+    const snapshot = request.choice.mode === 'attach'
+      ? await this.captureSnapshot(activity.id)
+      : null
+
+    try {
+      await step('intervals', () => this.writeIntervals(request, activity, [...streams.time]))
+      await step('custom-fields', () => this.writeCustomFields(request, activity.id))
+      await step('description', () => this.writeDescription(request, activity))
+    } catch (error) {
+      if (!(error instanceof WriteStepError)) throw error
+
+      const rollback = await this.compensate(activity.id, request.choice.mode, snapshot, completed)
+      throw new WriteStepError(error.step, error.completedSteps, error.cause, rollback)
+    }
 
     return { activityId: activity.id, mode: request.choice.mode, completedSteps: completed }
+  }
+
+  private async captureSnapshot(activityId: string): Promise<ActivitySnapshot> {
+    const [activity, intervals] = await Promise.all([
+      this.icu.getActivity(activityId),
+      this.icu.getIntervals(activityId),
+    ])
+
+    return {
+      intervals,
+      description: activity.description ?? null,
+      externalId: activity.external_id ?? null,
+      customFields: activity.custom_fields ?? {},
+    }
+  }
+
+  private async compensate(
+    activityId: string,
+    mode: 'create-new' | 'attach',
+    snapshot: ActivitySnapshot | null,
+    completed: readonly WriteStep[],
+  ): Promise<RollbackOutcome> {
+    try {
+      if (mode === 'create-new') {
+        await this.icu.deleteActivity(activityId)
+        return 'ok'
+      }
+
+      if (!snapshot) return 'skipped'
+
+      for (const completedStep of [...completed].reverse()) {
+        switch (completedStep) {
+          case 'activity':
+            break
+          case 'intervals':
+            await this.icu.putIntervals(activityId, snapshot.intervals)
+            break
+          case 'custom-fields':
+            await this.icu.setCustomFields(activityId, snapshot.customFields)
+            break
+          case 'description':
+            await this.icu.updateActivity(activityId, {
+              description: snapshot.description,
+              ...(snapshot.externalId === null ? {} : { external_id: snapshot.externalId }),
+            })
+            break
+        }
+      }
+
+      return 'ok'
+    } catch {
+      return 'failed'
+    }
   }
 
   private async openActivity(request: WriteRequest): Promise<IcuActivity> {
@@ -131,6 +217,13 @@ export class ActivityWriter {
 
 export function activityNameFor(session: SprintSession): string {
   return `${session.exerciseName} (Freelap)`
+}
+
+interface ActivitySnapshot {
+  readonly intervals: readonly IcuInterval[]
+  readonly description: string | null
+  readonly externalId: string | null
+  readonly customFields: Readonly<Record<string, number | string>>
 }
 
 function byStartIndex(left: IcuInterval, right: IcuInterval): number {

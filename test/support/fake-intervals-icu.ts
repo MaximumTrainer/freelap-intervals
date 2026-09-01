@@ -36,7 +36,9 @@ export class FakeIntervalsIcu implements IntervalsIcuClient {
   private readonly stored = new Map<string, StoredActivity>()
   private readonly customFields = new Set<string>()
   private nextId = 1
+  private writes = 0
   private readonly failures: IntervalsIcuError[] = []
+  private readonly methodFailures = new Map<string, IntervalsIcuError[]>()
 
   constructor(options: FakeIntervalsIcuOptions = {}) {
     this.athleteId = options.athleteId ?? 'i1234'
@@ -68,6 +70,13 @@ export class FakeIntervalsIcu implements IntervalsIcuClient {
     this.failures.push(new IntervalsIcuError(message, status, status === 429 || status >= 500))
   }
 
+  /** Queues a failure for the next call to a specific API method. */
+  failMethodCallWith(method: string, status: number, message = 'simulated failure'): void {
+    const queue = this.methodFailures.get(method) ?? []
+    queue.push(new IntervalsIcuError(message, status, status >= 500))
+    this.methodFailures.set(method, queue)
+  }
+
   activity(activityId: string): IcuActivity {
     return this.require(activityId).activity
   }
@@ -84,15 +93,19 @@ export class FakeIntervalsIcu implements IntervalsIcuClient {
     return this.stored.size
   }
 
+  get writeCallCount(): number {
+    return this.writes
+  }
+
   // --- client surface ----------------------------------------------------
 
   async athlete(athleteId: string): Promise<IcuAthlete> {
-    this.maybeFail()
+    this.maybeFail('athlete')
     return { id: athleteId, name: 'Test Athlete', timezone: this.timezone }
   }
 
   async listActivities(_athleteId: string, range: DateRange): Promise<IcuActivity[]> {
-    this.maybeFail()
+    this.maybeFail('listActivities')
     return [...this.stored.values()]
       .map(({ activity }) => activity)
       .filter(({ start_date_local }) => {
@@ -103,34 +116,46 @@ export class FakeIntervalsIcu implements IntervalsIcuClient {
   }
 
   async getActivity(activityId: string): Promise<IcuActivity> {
-    this.maybeFail()
+    this.maybeFail('getActivity')
     return this.require(activityId).activity
   }
 
   async updateActivity(activityId: string, patch: ActivityPatch): Promise<IcuActivity> {
-    this.maybeFail()
+    this.maybeFail('updateActivity')
+    this.writes++
     const stored = this.require(activityId)
     stored.activity = { ...stored.activity, ...patch }
     return stored.activity
   }
 
+  async deleteActivity(activityId: string): Promise<void> {
+    this.maybeFail('deleteActivity')
+    this.writes++
+    if (!this.stored.has(activityId)) {
+      throw new IntervalsIcuError(`No activity ${activityId}`, 404, false)
+    }
+    this.stored.delete(activityId)
+  }
+
   async getStreams(activityId: string): Promise<IcuStreams> {
-    this.maybeFail()
+    this.maybeFail('getStreams')
     return this.require(activityId).streams
   }
 
   async getIntervals(activityId: string): Promise<IcuInterval[]> {
-    this.maybeFail()
+    this.maybeFail('getIntervals')
     return [...this.require(activityId).intervals]
   }
 
   async putIntervals(activityId: string, intervals: readonly IcuInterval[]): Promise<void> {
-    this.maybeFail()
+    this.maybeFail('putIntervals')
+    this.writes++
     this.require(activityId).intervals = [...intervals]
   }
 
   async uploadActivity(_athleteId: string, upload: ActivityUpload): Promise<IcuActivity> {
-    this.maybeFail()
+    this.maybeFail('uploadActivity')
+    this.writes++
 
     const decoded = decodeFitActivity(upload.bytes)
     const id = this.mintId()
@@ -155,12 +180,14 @@ export class FakeIntervalsIcu implements IntervalsIcuClient {
   }
 
   async ensureCustomFields(_athleteId: string, definitions: readonly CustomFieldDefinition[]): Promise<void> {
-    this.maybeFail()
+    this.maybeFail('ensureCustomFields')
+    this.writes++
     for (const definition of definitions) this.customFields.add(definition.code)
   }
 
   async setCustomFields(activityId: string, values: CustomFieldValues): Promise<void> {
-    this.maybeFail()
+    this.maybeFail('setCustomFields')
+    this.writes++
     const undefinedField = Object.keys(values).find((code) => !this.customFields.has(code))
     if (undefinedField) {
       throw new IntervalsIcuError(`Unknown custom field ${undefinedField}`, 400, false)
@@ -178,7 +205,16 @@ export class FakeIntervalsIcu implements IntervalsIcuClient {
     return stored
   }
 
-  private maybeFail(): void {
+  private maybeFail(method?: string): void {
+    if (method) {
+      const queue = this.methodFailures.get(method)
+      if (queue?.length) {
+        const failure = queue.shift()!
+        if (queue.length === 0) this.methodFailures.delete(method)
+        throw failure
+      }
+    }
+
     const failure = this.failures.shift()
     if (failure) throw failure
   }

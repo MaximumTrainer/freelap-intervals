@@ -20,20 +20,60 @@ export function redirect(location: string, extraHeaders: Record<string, string> 
   return { status: 302, headers: { location, ...extraHeaders } }
 }
 
-export function json(body: unknown, status = 200): WebResponse {
-  return { status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+export function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): WebResponse {
+  return { status, headers: { 'content-type': 'application/json', ...extraHeaders }, body: JSON.stringify(body) }
 }
 
 export function noContent(status: number): WebResponse {
   return { status }
 }
 
-export async function readRequestBody(request: IncomingMessage): Promise<RequestBody> {
-  const chunks: Buffer[] = []
-  for await (const chunk of request) chunks.push(chunk as Buffer)
+/** Thrown when a request body exceeds the configured size cap. */
+export class BodyTooLargeError extends Error {
+  constructor(readonly limitBytes: number) {
+    super(`Request body exceeds the ${limitBytes}-byte limit`)
+  }
+}
 
-  const raw = Buffer.concat(chunks)
-  const contentType = request.headers['content-type'] ?? ''
+export interface ReadBodyOptions {
+  readonly maxBytes?: number
+}
+
+export async function readRequestBody(
+  request: IncomingMessage,
+  options?: ReadBodyOptions,
+): Promise<RequestBody> {
+  const raw = await readRawBody(request, options?.maxBytes)
+
+  return parseBody(raw, request.headers['content-type'] ?? '')
+}
+
+async function readRawBody(request: IncomingMessage, maxBytes: number | undefined): Promise<Buffer> {
+  if (maxBytes !== undefined) {
+    const declared = request.headers['content-length']
+    if (declared !== undefined && Number(declared) > maxBytes) {
+      throw new BodyTooLargeError(maxBytes)
+    }
+  }
+
+  const chunks: Buffer[] = []
+  let totalBytes = 0
+  for await (const chunk of request) {
+    totalBytes += (chunk as Buffer).length
+    if (maxBytes !== undefined && totalBytes > maxBytes) {
+      request.destroy()
+      throw new BodyTooLargeError(maxBytes)
+    }
+    chunks.push(chunk as Buffer)
+  }
+
+  return Buffer.concat(chunks)
+}
+
+async function parseBody(
+  raw: Buffer,
+  contentType: string,
+): Promise<RequestBody> {
   const fields = new Map<string, string>()
   const files = new Map<string, { filename: string; text: string }>()
 

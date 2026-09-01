@@ -21,6 +21,7 @@ const USAGE = [
   '        --new                           always create a new activity',
   '        --attach <activity-id>          attach to that activity',
   '        --offset <seconds>              shift every rep to correct for clock drift',
+  '        --force                         bypass the content-hash short-circuit',
   '  verify <session-id>                   re-check a synced session against intervals.icu',
 ].join('\n')
 
@@ -95,9 +96,17 @@ async function push(args: readonly string[], deps: CliDependencies): Promise<num
   const choice = await chosenTarget(options, sourceId, deps)
   if (!choice) return FAILED
 
-  const outcome = await deps.app.sync(sourceId, choice, options.offsetS === null ? {} : { offsetS: options.offsetS })
+  const outcome = await deps.app.sync(sourceId, choice, {
+    ...(options.offsetS === null ? {} : { offsetS: options.offsetS }),
+    ...(options.force ? { force: true } : {}),
+  })
 
-  deps.out(`Wrote ${session.reps.length} reps to activity ${outcome.activityId} (${outcome.mode})`)
+  if (outcome.skipped) {
+    deps.out(`Already up to date — activity ${outcome.activityId} (${outcome.mode})`)
+  } else {
+    deps.out(`Wrote ${session.reps.length} reps to activity ${outcome.activityId} (${outcome.mode})`)
+  }
+
   return reportVerification(outcome.verification, deps)
 }
 
@@ -116,6 +125,7 @@ interface PushOptions {
   readonly attachTo: string | null
   readonly createNew: boolean
   readonly offsetS: number | null
+  readonly force: boolean
 }
 
 function parseOptions(args: readonly string[]): PushOptions {
@@ -130,6 +140,7 @@ function parseOptions(args: readonly string[]): PushOptions {
     attachTo: valueAfter('--attach'),
     createNew: args.includes('--new'),
     offsetS: offset === null ? null : Number(offset),
+    force: args.includes('--force'),
   }
 }
 

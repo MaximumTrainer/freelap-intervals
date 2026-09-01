@@ -20,6 +20,11 @@ const PART_COUNT = 6
 export class EnvelopeCipher {
   constructor(private readonly kms: KeyManagementService) {}
 
+  /** The key id that new seals are made under. */
+  get currentKeyId(): string {
+    return this.kms.currentKeyId
+  }
+
   async seal(plaintext: string): Promise<string> {
     const dataKey = await this.kms.generateDataKey()
     const iv = randomBytes(IV_BYTES)

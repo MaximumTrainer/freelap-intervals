@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { HttpIntervalsIcuClient } from '~/icu/http-intervals-icu-client'
 import { IntervalsIcuError } from '~/icu/intervals-icu-client'
+import type { AcquireOptions, OutboundRateLimiter, RateLimiterStats } from '~/outbound-rate-limiter'
 
 import { StubFetch } from '../support/stub-fetch'
 
@@ -133,6 +134,17 @@ describe('writing', () => {
     })
   })
 
+  it('sends a DELETE for deleteActivity', async () => {
+    const http = new StubFetch().respondWith({ status: 200, body: {} })
+
+    await withApiKey(http).deleteActivity('a1')
+
+    expect(http.lastRequest()).toMatchObject({
+      method: 'DELETE',
+      url: 'https://intervals.icu/api/v1/activity/a1',
+    })
+  })
+
   it('writes custom field values onto the activity by their code', async () => {
     const http = new StubFetch().respondWith({ status: 200, body: {} })
 
@@ -231,5 +243,98 @@ describe('refreshable credentials', () => {
 
     await expect(client.athlete('i1')).rejects.toMatchObject({ status: 401 })
     expect(http.requests).toHaveLength(1)
+  })
+})
+
+class RecordingRateLimiter implements OutboundRateLimiter {
+  readonly acquires: string[] = []
+  readonly drained: Array<{ key: string; durationMs: number }> = []
+  readonly stats: RateLimiterStats = { waits: 0, totalWaitMs: 0 }
+
+  async acquire(key: string, _options?: AcquireOptions): Promise<void> {
+    this.acquires.push(key)
+  }
+
+  drainUntil(key: string, durationMs: number): void {
+    this.drained.push({ key, durationMs })
+  }
+}
+
+describe('outbound rate limiting (S6)', () => {
+  it('acquires rate-limit tokens before each outbound request', async () => {
+    const limiter = new RecordingRateLimiter()
+    const http = new StubFetch().respondWith(
+      { status: 200, body: { id: 'i1', name: 'Dan', timezone: 'UTC' } },
+    )
+    const client = new HttpIntervalsIcuClient({
+      credentials: { kind: 'apiKey', key: 'k' },
+      fetch: http.fetch,
+      limiter,
+      limiterKeys: ['intervals.icu', 'athlete:i1'],
+    })
+
+    await client.athlete('i1')
+
+    expect(limiter.acquires).toEqual(['intervals.icu', 'athlete:i1'])
+  })
+
+  it('drains the limiter on a 429 with Retry-After', async () => {
+    const limiter = new RecordingRateLimiter()
+    const http = new StubFetch().respondWith(
+      { status: 429, body: {}, headers: { 'retry-after': '30' } },
+      { status: 200, body: { id: 'i1', name: 'Dan', timezone: 'UTC' } },
+    )
+    const client = new HttpIntervalsIcuClient({
+      credentials: { kind: 'apiKey', key: 'k' },
+      fetch: http.fetch,
+      retry: neverSleeps,
+      limiter,
+      limiterKeys: ['intervals.icu', 'athlete:i1'],
+    })
+
+    await client.athlete('i1')
+
+    expect(limiter.drained).toEqual([
+      { key: 'intervals.icu', durationMs: 30_000 },
+      { key: 'athlete:i1', durationMs: 30_000 },
+    ])
+  })
+
+  it('does not drain when 429 has no Retry-After header', async () => {
+    const limiter = new RecordingRateLimiter()
+    const http = new StubFetch().respondWith(
+      { status: 429, body: {} },
+      { status: 200, body: { id: 'i1', name: 'Dan', timezone: 'UTC' } },
+    )
+    const client = new HttpIntervalsIcuClient({
+      credentials: { kind: 'apiKey', key: 'k' },
+      fetch: http.fetch,
+      retry: neverSleeps,
+      limiter,
+      limiterKeys: ['intervals.icu'],
+    })
+
+    await client.athlete('i1')
+
+    expect(limiter.drained).toEqual([])
+  })
+
+  it('acquires again on each retry attempt', async () => {
+    const limiter = new RecordingRateLimiter()
+    const http = new StubFetch().respondWith(
+      { status: 503, body: {} },
+      { status: 200, body: { id: 'i1', name: 'Dan', timezone: 'UTC' } },
+    )
+    const client = new HttpIntervalsIcuClient({
+      credentials: { kind: 'apiKey', key: 'k' },
+      fetch: http.fetch,
+      retry: neverSleeps,
+      limiter,
+      limiterKeys: ['intervals.icu'],
+    })
+
+    await client.athlete('i1')
+
+    expect(limiter.acquires).toEqual(['intervals.icu', 'intervals.icu'])
   })
 })

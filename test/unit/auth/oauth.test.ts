@@ -107,6 +107,32 @@ describe('PgOAuthStateStore', () => {
   it('rejects a state it never issued', async () => {
     expect(await states.consume('made-up')).toBeNull()
   })
+
+  it('rejects a state older than the configured TTL', async () => {
+    let clock = new Date('2026-08-29T12:00:00Z')
+    const timedStates = new PgOAuthStateStore(database, {
+      now: () => clock,
+      ttlMs: 10 * 60 * 1000,
+    })
+
+    const state = await timedStates.issue(userId, '/sessions')
+
+    clock = new Date('2026-08-29T12:11:00Z')
+    expect(await timedStates.consume(state)).toBeNull()
+  })
+
+  it('accepts a state just inside the TTL boundary', async () => {
+    let clock = new Date('2026-08-29T12:00:00Z')
+    const timedStates = new PgOAuthStateStore(database, {
+      now: () => clock,
+      ttlMs: 10 * 60 * 1000,
+    })
+
+    const state = await timedStates.issue(userId, '/sessions')
+
+    clock = new Date('2026-08-29T12:09:00Z')
+    expect(await timedStates.consume(state)).toEqual({ userId, redirectUri: '/sessions' })
+  })
 })
 
 describe('OAuthCredentialSource', () => {

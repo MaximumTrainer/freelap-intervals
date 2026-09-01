@@ -19,13 +19,18 @@ export interface CsvImportOptions {
   readonly columnOverrides?: MappingOverrides
   /** Used when the export carries no athlete column. */
   readonly athleteRef?: string
+  /** Maximum gap between consecutive reps before they split into separate sessions (ms). */
+  readonly sessionGapMs?: number
 }
+
+const THREE_HOURS_MS = 3 * 60 * 60 * 1000
 
 interface Settings {
   readonly timezone: string
   readonly dateOrder: DateOrder
   readonly sport: Sport
   readonly athleteRef: string
+  readonly sessionGapMs: number
 }
 
 interface RepRow {
@@ -89,6 +94,7 @@ function withDefaults(options: CsvImportOptions): Settings {
     dateOrder: options.dateOrder ?? 'day-first',
     sport: options.sport ?? 'run',
     athleteRef: options.athleteRef ?? 'unknown',
+    sessionGapMs: options.sessionGapMs ?? THREE_HOURS_MS,
   }
 }
 
@@ -155,26 +161,64 @@ function derivedSpeed(distanceM: number | null, totalS: number): number | null {
 }
 
 function groupIntoSessions(rows: readonly RepRow[], settings: Settings): SprintSession[] {
-  const groups = new Map<string, RepRow[]>()
-
+  const byKind = new Map<string, RepRow[]>()
   for (const row of rows) {
-    const key = `${dateKey(row.date)}|${row.exerciseName}|${row.athleteRef}`
-    groups.set(key, [...(groups.get(key) ?? []), row])
+    const key = `${row.exerciseName}|${row.athleteRef}`
+    byKind.set(key, [...(byKind.get(key) ?? []), row])
   }
 
-  return [...groups.values()].map((group) => toSession(group, settings)).sort(byStartTime)
+  const sessions: SprintSession[] = []
+  for (const kindGroup of byKind.values()) {
+    sessions.push(...splitByGap(kindGroup, settings))
+  }
+
+  return sessions.sort(byStartTime)
+}
+
+function splitByGap(rows: readonly RepRow[], settings: Settings): SprintSession[] {
+  const allHaveClocks = rows.every((row) => row.rep.wallClock !== null)
+  if (!allHaveClocks) return splitByDate(rows, settings)
+
+  const sorted = [...rows].sort(
+    (left, right) => Date.parse(left.rep.wallClock!) - Date.parse(right.rep.wallClock!),
+  )
+
+  const groups: RepRow[][] = []
+  let current: RepRow[] = [sorted[0]!]
+
+  for (let index = 1; index < sorted.length; index++) {
+    const gapMs = Date.parse(sorted[index]!.rep.wallClock!) - Date.parse(sorted[index - 1]!.rep.wallClock!)
+    if (gapMs > settings.sessionGapMs) {
+      groups.push(current)
+      current = []
+    }
+    current.push(sorted[index]!)
+  }
+  groups.push(current)
+
+  return groups.map((group) => toSession(group, settings))
+}
+
+function splitByDate(rows: readonly RepRow[], settings: Settings): SprintSession[] {
+  const byDate = new Map<string, RepRow[]>()
+  for (const row of rows) {
+    const key = dateKey(row.date)
+    byDate.set(key, [...(byDate.get(key) ?? []), row])
+  }
+
+  return [...byDate.values()].map((group) => toSession(group, settings))
 }
 
 function toSession(group: readonly RepRow[], settings: Settings): SprintSession {
-  const reps = [...group]
-    .sort((left, right) => left.order - right.order)
-    .map((row, offset): Rep => ({ ...row.rep, index: offset + 1 }))
+  const sorted = [...group].sort((left, right) => left.order - right.order)
+  const reps = sorted.map((row, offset): Rep => ({ ...row.rep, index: offset + 1 }))
 
-  const first = group[0]!
+  const earliest = earliestWallClock(sorted)
+  const first = sorted[0]!
   const midnight = { ...first.date, hour: 0, minute: 0, second: 0 }
   const draft = {
     athleteRef: first.athleteRef,
-    startedAt: reps[0]?.wallClock ?? toZonedIso(midnight, settings.timezone),
+    startedAt: earliest ?? toZonedIso(midnight, settings.timezone),
     sport: settings.sport,
     exerciseName: first.exerciseName,
     distanceM: sharedDistance(reps),
@@ -182,6 +226,18 @@ function toSession(group: readonly RepRow[], settings: Settings): SprintSession 
   }
 
   return { ...draft, sourceId: sourceIdOf(draft), summary: summariseReps(reps) }
+}
+
+function earliestWallClock(rows: readonly RepRow[]): string | null {
+  let earliest: string | null = null
+  for (const row of rows) {
+    if (row.rep.wallClock === null) continue
+    if (earliest === null || Date.parse(row.rep.wallClock) < Date.parse(earliest)) {
+      earliest = row.rep.wallClock
+    }
+  }
+
+  return earliest
 }
 
 function sharedDistance(reps: readonly Rep[]): number | null {
