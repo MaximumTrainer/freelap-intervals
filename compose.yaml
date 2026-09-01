@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: freelap
+      POSTGRES_USER: freelap
+      POSTGRES_PASSWORD: freelap
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U freelap"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: .
+    command: ["src/db/migrate-cli.ts"]
+    environment:
+      DATABASE_URL: postgres://freelap:freelap@postgres:5432/freelap
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build: .
+    command: ["src/web/main.ts"]
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://freelap:freelap@postgres:5432/freelap
+      PORT: "3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build: .
+    command: ["src/worker/main.ts"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://freelap:freelap@postgres:5432/freelap
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:

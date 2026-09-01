@@ -8,6 +8,8 @@ import { PgAuditLog } from '~/audit/pg-audit-log'
 import { OAuthClient } from '~/auth/oauth-client'
 import { PgOAuthStateStore } from '~/auth/oauth-state-store'
 import type { Database } from '~/db/database'
+import { loadMigrations } from '~/db/migrations'
+import { appliedVersions } from '~/db/migrator'
 import type { JobHandler } from '~/jobs/worker'
 import { Worker } from '~/jobs/worker'
 import { PgJobQueue } from '~/jobs/pg-job-queue'
@@ -139,6 +141,13 @@ export async function startTestWebApp(options: TestWebAppOptions): Promise<Runni
       errorReporter: new LoggingErrorReporter(testLogger),
       metricsSecret: 'test-metrics-secret',
       connectionProbe,
+      checkReadiness: async () => {
+        await database.query('select 1')
+        const applied = new Set(await appliedVersions(database))
+        const expected = await loadMigrations()
+        const behind = expected.some((m) => !applied.has(m.version))
+        return { ready: !behind, migrations: behind ? 'behind' as const : 'current' as const }
+      },
     }),
   )
 

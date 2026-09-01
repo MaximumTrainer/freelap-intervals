@@ -686,6 +686,30 @@ describe('OAuth scope display (F6)', () => {
   })
 })
 
+describe('readiness probe (O2)', () => {
+  let icu: FakeIntervalsIcuServer
+  let web: RunningWebApp
+
+  beforeEach(async () => {
+    icu = await FakeIntervalsIcuServer.start()
+    web = await startTestWebApp({ icu })
+  })
+
+  afterEach(async () => {
+    await web.close()
+    await icu.stop()
+  })
+
+  it('returns 200 when the database is reachable and migrations are current', async () => {
+    const response = await web.get('/readyz')
+
+    expect(response.status).toBe(200)
+    const body = await response.json() as { status: string; migrations: string }
+    expect(body.status).toBe('ready')
+    expect(body.migrations).toBe('current')
+  })
+})
+
 describe('CSRF route coverage', () => {
   it('every POST route is either CSRF-enforced or explicitly exempt', () => {
     const router = buildRouter()

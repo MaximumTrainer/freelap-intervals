@@ -87,6 +87,7 @@ function aMinimalWebApp(
         freelap: { state: 'not_connected' as const },
       }),
     } as never,
+    checkReadiness: async () => ({ ready: true, migrations: 'current' as const }),
     ...overrides,
   }
 

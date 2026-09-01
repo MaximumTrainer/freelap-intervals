@@ -58,6 +58,7 @@ export interface WebAppDependencies {
   readonly errorReporter: ErrorReporter
   readonly metricsSecret: string
   readonly connectionProbe: ConnectionProbe
+  readonly checkReadiness: () => Promise<{ ready: boolean; migrations: 'current' | 'behind' }>
 }
 
 export interface RequestContext {
@@ -78,7 +79,7 @@ export interface RequestContext {
 }
 
 /** Routes that anyone may reach; everything else needs a signed-in athlete. */
-const PUBLIC_PATHS = new Set(['/sign-in', '/healthz', '/metrics', '/privacy'])
+const PUBLIC_PATHS = new Set(['/sign-in', '/healthz', '/readyz', '/metrics', '/privacy'])
 
 const WEBHOOK_PREFIX = '/webhooks/intervals-icu/'
 
@@ -120,6 +121,16 @@ export function buildRouter(): Router<RequestContext> {
   const router = new Router<RequestContext>()
 
   router.get('/healthz', async () => ({ status: 200, body: 'ok' }))
+
+  router.get('/readyz', async (context) => {
+    try {
+      const check = await context.deps.checkReadiness()
+      if (!check.ready) return json({ status: 'not ready', migrations: check.migrations }, 503)
+      return json({ status: 'ready', migrations: check.migrations })
+    } catch {
+      return json({ status: 'not ready', reason: 'database unreachable' }, 503)
+    }
+  })
 
   router.get('/metrics', async (context) => {
     const token = context.url.searchParams.get('token')

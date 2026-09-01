@@ -197,6 +197,52 @@ CI runs `npm run check` on every push and pull request (Node 20 and 22). It must
    fields and the description block in reverse order. If the rollback itself fails, the original
    error still surfaces and the ledger records `rollback: 'failed'`.
 
+7. **The `FreelapSource` port abstracts only the MyFreelap web backend, not the CSV path.** §2 of
+   the design envisions two implementations behind one interface. In practice the CSV path is
+   fundamentally different: a synchronous parse of a user-uploaded file with dialect inspection,
+   column-mapping memory and fingerprinting concerns that have no equivalent on the web side.
+   Forcing both behind one port would either bloat the interface with CSV-only methods or bypass it
+   for the parts that matter. The port stays as `FreelapSource` and covers only the unofficial web
+   adapter; CSV ingestion goes through `readSessions`/`inspectCsv` directly. `CsvFreelapSource`
+   was deleted rather than leaving dead code.
+8. **No custom speed stream written (§11.2, decided 2026-09-01).** Intervals plus custom fields
+   already carry the exact Freelap timings; a second speed stream would risk contaminating
+   intervals.icu's pace curves and training-load analytics — a harm that outweighs the charting
+   benefit. The decision can be reopened if beta athletes (B6) specifically ask for it and if the
+   API (B4) confirms streams can be removed cleanly for rollback.
+9. **Interval ownership is by name only (C6 limitation).** An interval is recognised as ours when
+   its name matches `FL #<n>`. If an athlete manually names one of their own intervals `FL #1`,
+   the next re-sync will treat it as ours and replace it. The planned mitigation is a `freelap`
+   marker tag on each interval (pending confirmation of the intervals.icu interval tag API in B4).
+   Until then, this edge case is documented rather than prevented.
+
+## Deployment
+
+The app ships as a single Docker image that can run either the web server or the worker, selected by
+command argument. A `compose.yaml` brings up the full local stack — Postgres, migrations, web and
+worker — with `docker compose up`.
+
+**Scale shape.** Both the web process and the worker may run multiple replicas against one Postgres.
+The queue's `for update skip locked` ensures no job is processed twice, and the `queue_key`
+round-robin prevents one athlete's backlog from starving another.
+
+**Migrations run as an explicit deploy step** (`npx tsx src/db/migrate-cli.ts`), not at process
+startup, so two replicas cannot race on schema changes.
+
+**TLS terminates in front of the app** (a reverse proxy, a load balancer, or a platform like
+Fly.io / Railway). The app listens on plain HTTP; the `Secure` cookie flag from S3 is correct in
+production because the proxy adds TLS. Set `FREELAP_ALLOW_INSECURE_COOKIES=true` only for local
+development without TLS.
+
+**Hosting (§11.4).** The hosting target is any platform that can run a Docker image with a managed
+Postgres — Railway, Fly.io, Render, AWS ECS, or a VPS with Docker Compose. The UI is server-rendered
+HTML and does not require a mobile-first architecture decision; responsive CSS handles phone-sized
+viewports when needed.
+
+**Probes.** `GET /healthz` is the liveness probe (always returns 200). `GET /readyz` is the
+readiness probe: it checks database connectivity and that all migrations have been applied, returning
+`{"status":"ready","migrations":"current"}` or a 503.
+
 ## What still needs the real world
 
 - **Phase 0 discovery.** The MyFreelap endpoints and payload shapes in

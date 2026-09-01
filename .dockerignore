@@ -1,0 +1,12 @@
+node_modules
+test
+.env
+.env.*
+!.env.example
+*.md
+.git
+.github
+.claude
+.eslintcache
+coverage
+dist

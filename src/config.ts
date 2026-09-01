@@ -31,6 +31,8 @@ import { InMemoryMetricsRegistry } from '~/logging/metrics-registry'
 import type { MetricsRegistry } from '~/logging/metrics-registry'
 import { ConnectionStore } from '~/security/connection-store'
 import { EnvelopeCipher } from '~/security/envelope-cipher'
+import { loadMigrations } from '~/db/migrations'
+import { appliedVersions } from '~/db/migrator'
 import { LocalKeyManagementService } from '~/security/local-kms'
 import { Secret } from '~/security/secret'
 import { InMemoryRateLimiter } from '~/outbound-rate-limiter'
@@ -208,6 +210,19 @@ function buildWebDependencies(
     now: () => new Date(),
     metricsSecret: config.metricsSecret,
     connectionProbe,
+    checkReadiness: buildReadinessCheck(database),
+  }
+}
+
+function buildReadinessCheck(
+  database: Database,
+): () => Promise<{ ready: boolean; migrations: 'current' | 'behind' }> {
+  return async () => {
+    await database.query('select 1')
+    const applied = new Set(await appliedVersions(database))
+    const expected = await loadMigrations()
+    const behind = expected.some((m) => !applied.has(m.version))
+    return { ready: !behind, migrations: behind ? 'behind' : 'current' }
   }
 }
 
