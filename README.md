@@ -7,13 +7,13 @@ intervals, summary custom fields and a human-readable rep table — then reads t
 reports every way it differs from what was intended.
 
 All six phases of [the design](freelap-intervals-icu-integration-design.md) are built: foundations,
-ingestion, match & write, verify & re-sync, and hardening. 574 tests, no Docker needed to run them.
+ingestion, match & write, verify & re-sync, and hardening. 588 tests, no Docker needed to run them.
 
 ## Quick start
 
 ```bash
 npm install
-npm run check                     # typecheck + 574 tests (Postgres runs in-process via PGlite)
+npm run check                     # typecheck + 588 tests (Postgres runs in-process via PGlite)
 
 cp .env.example .env              # then fill it in; see Configuration below
 npm run migrate                   # apply the SQL migrations

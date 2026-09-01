@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Takes your Freelap sprint sessions and writes them into intervals.icu as structured intervals, summary fields, and a rep table — then verifies every byte landed correctly.">
+<title>Freelap Sprint Sync</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏃</text></svg>">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@400;600;800&family=Work+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap">
+
+<style>
+:root {
+  --c-ground: #F8F6F2;
+  --c-ground-alt: #EDE8E1;
+  --c-hero: #0F1923;
+  --c-hero-text: #E8E4DF;
+  --c-hero-muted: #8A95A2;
+  --c-text: #1A1E23;
+  --c-text-secondary: #5A6B7A;
+  --c-accent: #E4572E;
+  --c-accent-glow: rgba(228, 87, 46, 0.15);
+  --c-green: #27AE60;
+  --c-green-soft: rgba(39, 174, 96, 0.12);
+  --c-border: #D5CFC6;
+  --c-card: #FFFFFF;
+  --c-card-shadow: rgba(15, 25, 35, 0.06);
+  --c-code-bg: #F0ECE6;
+
+  --f-display: 'Big Shoulders Display', 'Impact', sans-serif;
+  --f-body: 'Work Sans', 'Segoe UI', system-ui, sans-serif;
+
+  --w-content: 960px;
+  --w-wide: 1120px;
+  --gap-section: 5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-ground: #111820;
+    --c-ground-alt: #161E28;
+    --c-hero: #080D13;
+    --c-hero-text: #D6D1CA;
+    --c-hero-muted: #6B7785;
+    --c-text: #D6D1CA;
+    --c-text-secondary: #8A95A2;
+    --c-accent: #F06A40;
+    --c-accent-glow: rgba(240, 106, 64, 0.18);
+    --c-green: #2ECC71;
+    --c-green-soft: rgba(46, 204, 113, 0.15);
+    --c-border: #2A3440;
+    --c-card: #1A2230;
+    --c-card-shadow: rgba(0, 0, 0, 0.3);
+    --c-code-bg: #1A2230;
+  }
+}
+:root[data-theme="dark"] {
+  --c-ground: #111820;
+  --c-ground-alt: #161E28;
+  --c-hero: #080D13;
+  --c-hero-text: #D6D1CA;
+  --c-hero-muted: #6B7785;
+  --c-text: #D6D1CA;
+  --c-text-secondary: #8A95A2;
+  --c-accent: #F06A40;
+  --c-accent-glow: rgba(240, 106, 64, 0.18);
+  --c-green: #2ECC71;
+  --c-green-soft: rgba(46, 204, 113, 0.15);
+  --c-border: #2A3440;
+  --c-card: #1A2230;
+  --c-card-shadow: rgba(0, 0, 0, 0.3);
+  --c-code-bg: #1A2230;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--c-ground);
+  color: var(--c-text);
+  font-family: var(--f-body);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--f-display);
+  text-wrap: balance;
+  line-height: 1.1;
+}
+
+a {
+  color: var(--c-accent);
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+a:hover { opacity: 0.8; }
+a:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.hero {
+  background: var(--c-hero);
+  color: var(--c-hero-text);
+  padding: 4rem 2rem 4.5rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent calc(50% - 240px),
+      rgba(228, 87, 46, 0.04) calc(50% - 240px),
+      rgba(228, 87, 46, 0.04) calc(50% - 239px),
+      transparent calc(50% - 239px),
+      transparent calc(50% - 120px),
+      rgba(228, 87, 46, 0.04) calc(50% - 120px),
+      rgba(228, 87, 46, 0.04) calc(50% - 119px),
+      transparent calc(50% - 119px),
+      transparent calc(50% + 119px),
+      rgba(228, 87, 46, 0.04) calc(50% + 119px),
+      rgba(228, 87, 46, 0.04) calc(50% + 120px),
+      transparent calc(50% + 120px),
+      transparent calc(50% + 239px),
+      rgba(228, 87, 46, 0.04) calc(50% + 239px),
+      rgba(228, 87, 46, 0.04) calc(50% + 240px),
+      transparent calc(50% + 240px)
+    );
+  pointer-events: none;
+}
+
+.hero-eyebrow {
+  font-family: var(--f-display);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+  margin-bottom: 1rem;
+}
+
+.hero h1 {
+  font-size: clamp(2.8rem, 6vw, 4.5rem);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  margin-bottom: 1.25rem;
+}
+.hero h1 .arrow {
+  color: var(--c-accent);
+  display: inline-block;
+  margin: 0 0.15em;
+  font-weight: 400;
+}
+
+.hero-sub {
+  font-size: 1.1rem;
+  max-width: 580px;
+  margin: 0 auto 2rem;
+  color: var(--c-hero-muted);
+  line-height: 1.6;
+  font-weight: 300;
+}
+
+.hero-links {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.hero-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.4rem;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn-primary {
+  background: var(--c-accent);
+  color: #fff !important;
+}
+.btn-primary:hover { opacity: 0.9; }
+.btn-ghost {
+  border: 1px solid var(--c-border);
+  color: var(--c-hero-text) !important;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.05); }
+
+.section {
+  padding: var(--gap-section) 2rem;
+  max-width: var(--w-wide);
+  margin: 0 auto;
+}
+.section-alt {
+  background: var(--c-ground-alt);
+}
+.section-alt .section {
+  padding-top: var(--gap-section);
+  padding-bottom: var(--gap-section);
+}
+
+.section-label {
+  font-family: var(--f-display);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--c-accent);
+  margin-bottom: 0.75rem;
+}
+
+.section h2 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.section-intro {
+  font-size: 1.05rem;
+  color: var(--c-text-secondary);
+  max-width: 600px;
+  margin-bottom: 2.5rem;
+  font-weight: 300;
+}
+
+.flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--c-border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 2rem;
+}
+@media (max-width: 640px) {
+  .flow { grid-template-columns: 1fr; }
+}
+
+.flow-step {
+  background: var(--c-card);
+  padding: 1.5rem;
+  text-align: center;
+  position: relative;
+}
+.flow-step-num {
+  font-family: var(--f-display);
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--c-accent);
+  opacity: 0.25;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+.flow-step h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.4rem;
+}
+.flow-step p {
+  font-size: 0.85rem;
+  color: var(--c-text-secondary);
+  line-height: 1.5;
+}
+.flow-step::after {
+  content: '\2192';
+  position: absolute;
+  right: -0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--c-text-secondary);
+  font-size: 1rem;
+  z-index: 1;
+}
+.flow-step:last-child::after { display: none; }
+@media (max-width: 640px) {
+  .flow-step::after {
+    content: '\2193';
+    right: 50%;
+    top: auto;
+    bottom: -0.65rem;
+    transform: translateX(50%);
+  }
+}
+
+.lands-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+@media (max-width: 640px) {
+  .lands-grid { grid-template-columns: 1fr; }
+}
+
+.lands-card {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.lands-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: var(--f-display);
+}
+.lands-icon.orange { background: var(--c-accent-glow); color: var(--c-accent); }
+.lands-icon.green { background: var(--c-green-soft); color: var(--c-green); }
+
+.lands-card h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.25rem;
+}
+.lands-card p {
+  font-size: 0.85rem;
+  color: var(--c-text-secondary);
+  line-height: 1.5;
+}
+
+.rep-table-wrap {
+  overflow-x: auto;
+  margin: 2.5rem 0;
+  border-radius: 6px;
+  border: 1px solid var(--c-border);
+}
+.rep-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.rep-table th {
+  font-family: var(--f-display);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  color: var(--c-text-secondary);
+  padding: 0.6rem 1rem;
+  text-align: left;
+  background: var(--c-ground-alt);
+  border-bottom: 1px solid var(--c-border);
+}
+.rep-table td {
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text);
+}
+.rep-table tr:last-child td { border-bottom: none; }
+.rep-table .best {
+  color: var(--c-green);
+  font-weight: 600;
+}
+.rep-table .rep-name {
+  color: var(--c-accent);
+  font-weight: 500;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+@media (max-width: 768px) {
+  .features { grid-template-columns: 1fr; }
+}
+
+.feature h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.5rem;
+}
+.feature-bar {
+  width: 24px;
+  height: 3px;
+  background: var(--c-accent);
+  margin-bottom: 1rem;
+  border-radius: 2px;
+}
+.feature p {
+  font-size: 0.88rem;
+  color: var(--c-text-secondary);
+  line-height: 1.6;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 640px;
+}
+.step {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.step-marker {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--c-accent-glow);
+  color: var(--c-accent);
+  font-family: var(--f-display);
+  font-weight: 800;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.1rem;
+}
+.step h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.15rem;
+}
+.step p {
+  font-size: 0.88rem;
+  color: var(--c-text-secondary);
+  line-height: 1.5;
+}
+.step code {
+  font-size: 0.82rem;
+  background: var(--c-code-bg);
+  padding: 0.15em 0.45em;
+  border-radius: 3px;
+  font-family: 'SFMono-Regular', 'Consolas', monospace;
+}
+
+.arch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+.arch-item {
+  background: var(--c-card);
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+}
+.arch-item h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.2rem;
+}
+.arch-item p {
+  font-size: 0.78rem;
+  color: var(--c-text-secondary);
+  line-height: 1.45;
+}
+
+.footer {
+  padding: 2.5rem 2rem;
+  text-align: center;
+  color: var(--c-text-secondary);
+  font-size: 0.82rem;
+  border-top: 1px solid var(--c-border);
+}
+.footer a { font-weight: 500; }
+.footer-links {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-eyebrow">Open-source sprint sync</div>
+  <h1>Freelap <span class="arrow">&rarr;</span> intervals.icu</h1>
+  <p class="hero-sub">
+    Takes your Freelap sprint sessions and writes them into intervals.icu as structured intervals,
+    summary fields, and a rep table &mdash; then verifies every byte landed correctly.
+  </p>
+  <div class="hero-links">
+    <a href="https://github.com/MaximumTrainer/freelap-intervals" class="btn-primary" target="_blank" rel="noopener">View on GitHub</a>
+    <a href="https://github.com/MaximumTrainer/freelap-intervals/blob/main/GUIDE.md" class="btn-ghost" target="_blank" rel="noopener">User guide</a>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">How it works</div>
+  <h2>Four steps, fully verified</h2>
+  <p class="section-intro">
+    Import from CSV or the MyFreelap web backend. The app matches your session to a watch activity,
+    writes the data, then reads it back to confirm.
+  </p>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-step-num">01</div>
+      <h3>Import</h3>
+      <p>Upload a CSV or fetch from MyFreelap. Sessions are normalised into a canonical model.</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-step-num">02</div>
+      <h3>Match</h3>
+      <p>Candidate activities are scored by date, duration, and speed-peak correlation.</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-step-num">03</div>
+      <h3>Write</h3>
+      <p>Intervals, custom fields, and a rep table land on the activity. Or a synthetic FIT is uploaded.</p>
+    </div>
+    <div class="flow-step">
+      <div class="flow-step-num">04</div>
+      <h3>Verify</h3>
+      <p>The activity is read back and compared field by field. Every difference is reported.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section-alt">
+  <div class="section">
+    <div class="section-label">What gets written</div>
+    <h2>Your activity, enriched</h2>
+    <p class="section-intro">
+      Everything the app writes is fenced and deterministic. Your existing warmups, cool-downs, and
+      notes are never touched.
+    </p>
+    <div class="lands-grid">
+      <div class="lands-card">
+        <div class="lands-icon orange">FL</div>
+        <div>
+          <h4>Structured intervals</h4>
+          <p>Named <code style="font-size:0.82rem;background:var(--c-code-bg);padding:0.1em 0.35em;border-radius:3px;">FL #1 &middot; 30m &middot; 3.35s</code> &mdash; deterministic, so a re-sync replaces only ours and leaves yours alone.</p>
+        </div>
+      </div>
+      <div class="lands-card">
+        <div class="lands-icon green">#</div>
+        <div>
+          <h4>Custom fields</h4>
+          <p>Session ID, rep count, best/average time, distance. Searchable and chartable in intervals.icu.</p>
+        </div>
+      </div>
+      <div class="lands-card">
+        <div class="lands-icon orange">&para;</div>
+        <div>
+          <h4>Description block</h4>
+          <p>A fenced rep table with splits and max speed. Your own notes outside the fence survive every re-sync.</p>
+        </div>
+      </div>
+      <div class="lands-card">
+        <div class="lands-icon green">&check;</div>
+        <div>
+          <h4>Verification</h4>
+          <p>Every field is read back and compared. Drift is detected automatically, and a re-sync brings it back.</p>
+        </div>
+      </div>
+    </div>
+    <div class="rep-table-wrap">
+      <table class="rep-table">
+        <thead>
+          <tr>
+            <th>Interval</th>
+            <th>Distance</th>
+            <th>Time</th>
+            <th>Split 1</th>
+            <th>Split 2</th>
+            <th>Max speed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="rep-name">FL #1</td><td>30 m</td><td class="best">3.35 s</td><td>1.82 s</td><td>1.53 s</td><td>9.2 m/s</td></tr>
+          <tr><td class="rep-name">FL #2</td><td>30 m</td><td>3.41 s</td><td>1.85 s</td><td>1.56 s</td><td>9.0 m/s</td></tr>
+          <tr><td class="rep-name">FL #3</td><td>30 m</td><td>3.52 s</td><td>1.91 s</td><td>1.61 s</td><td>8.8 m/s</td></tr>
+          <tr><td class="rep-name">FL #4</td><td>30 m</td><td>3.48 s</td><td>1.88 s</td><td>1.60 s</td><td>8.9 m/s</td></tr>
+          <tr><td class="rep-name">FL #5</td><td>30 m</td><td>3.61 s</td><td>1.94 s</td><td>1.67 s</td><td>8.6 m/s</td></tr>
+          <tr><td class="rep-name">FL #6</td><td>30 m</td><td>3.55 s</td><td>1.92 s</td><td>1.63 s</td><td>8.7 m/s</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">Built for trust</div>
+  <h2>Features</h2>
+  <p class="section-intro">
+    Every design choice optimises for data integrity: your training data is yours,
+    and this app never corrupts it.
+  </p>
+  <div class="features">
+    <div class="feature">
+      <div class="feature-bar"></div>
+      <h4>Rollback on failure</h4>
+      <p>If a write fails mid-way, completed steps are reversed automatically. In create mode the orphan activity is deleted; in attach mode a snapshot is restored.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-bar"></div>
+      <h4>Content-hash skip</h4>
+      <p>Re-syncing an unchanged session skips the write but still re-verifies, so you always know the current state without wasting API calls.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-bar"></div>
+      <h4>Offset suggestion</h4>
+      <p>Cross-correlates Freelap rep timings against the watch speed trace to suggest a clock offset. You can always override with the slider.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-bar"></div>
+      <h4>Envelope encryption</h4>
+      <p>Every credential is encrypted before it reaches the database, with per-credential keys wrapped by a master key. Nothing is ever logged in the clear.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-bar"></div>
+      <h4>Per-athlete queue</h4>
+      <p>Background jobs are round-robin by athlete, so one person's backlog never delays another. At most one job per athlete runs at a time.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-bar"></div>
+      <h4>Adapter canary</h4>
+      <p>A nightly health check against a test account detects MyFreelap changes before athletes hit them. Degradation triggers alerts and a CSV fallback.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section-alt">
+  <div class="section">
+    <div class="section-label">Get started</div>
+    <h2>Up and running</h2>
+    <p class="section-intro">
+      No Docker needed for development. Postgres runs in-process via PGlite.
+    </p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-marker">1</div>
+        <div>
+          <h4>Clone and install</h4>
+          <p><code>git clone</code> the repo, then <code>npm install</code>. That's it &mdash; no external services.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker">2</div>
+        <div>
+          <h4>Run the gate</h4>
+          <p><code>npm run check</code> runs typecheck, lint, and all 588 tests against an in-process Postgres.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker">3</div>
+        <div>
+          <h4>Configure</h4>
+          <p>Copy <code>.env.example</code> to <code>.env</code> and fill in your secrets and intervals.icu OAuth credentials.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker">4</div>
+        <div>
+          <h4>Start the app</h4>
+          <p><code>npm run migrate</code>, then <code>npm run web</code> and <code>npm run worker</code> in separate terminals. Or use <code>docker compose up</code>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker">5</div>
+        <div>
+          <h4>Or use the CLI</h4>
+          <p>Set <code>INTERVALS_ICU_ATHLETE_ID</code> and <code>INTERVALS_ICU_API_KEY</code>, then <code>npm run sync -- import</code>, <code>plan</code>, <code>push</code>, <code>verify</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-label">Architecture</div>
+  <h2>Ports and adapters</h2>
+  <p class="section-intro">
+    Pure domain at the centre. Everything the outside world can change sits at the edge behind an
+    interface.
+  </p>
+  <div class="arch-grid">
+    <div class="arch-item"><h4>Domain</h4><p>SprintSession, interval naming, timezones, durations. No I/O, no clock, no env.</p></div>
+    <div class="arch-item"><h4>App</h4><p>SyncApplication: import, plan, sync, verify. The only orchestrator.</p></div>
+    <div class="arch-item"><h4>Ingest</h4><p>CSV normalisation and the flag-gated MyFreelap web adapter.</p></div>
+    <div class="arch-item"><h4>Match</h4><p>Ranks candidates by date, duration, and speed-peak correlation.</p></div>
+    <div class="arch-item"><h4>Write</h4><p>Timeline placement, interval planning, FIT encoding. Rollback on failure.</p></div>
+    <div class="arch-item"><h4>Verify</h4><p>Reads back every field and reports diffs against intent.</p></div>
+    <div class="arch-item"><h4>Security</h4><p>Envelope encryption, CSRF, session store, rate limiting.</p></div>
+    <div class="arch-item"><h4>Jobs</h4><p>Postgres queue with per-athlete round-robin and canary scheduling.</p></div>
+    <div class="arch-item"><h4>Web</h4><p>Server-rendered HTML. Connect, import, review with offset slider, sync, verify.</p></div>
+    <div class="arch-item"><h4>CLI</h4><p>Single-athlete, no-database path. API key only.</p></div>
+  </div>
+</div>
+
+<div class="footer">
+  <div class="footer-links">
+    <a href="https://github.com/MaximumTrainer/freelap-intervals" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/MaximumTrainer/freelap-intervals/blob/main/GUIDE.md" target="_blank" rel="noopener">User guide</a>
+    <a href="https://github.com/MaximumTrainer/freelap-intervals/blob/main/PRIVACY.md" target="_blank" rel="noopener">Privacy</a>
+    <a href="https://github.com/MaximumTrainer/freelap-intervals/blob/main/README.md" target="_blank" rel="noopener">README</a>
+  </div>
+  <span>588 tests &middot; 0 lint errors &middot; CI green on Node 20 &amp; 22</span>
+</div>
+
+</body>
+</html>
