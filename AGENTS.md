@@ -398,3 +398,16 @@ GitHub issues **#1–#38** record what is genuinely missing — the former `GAPS
 gap, each carrying numbered requirements and Given/When/Then acceptance criteria (see §3.6). Known
 gaps are not defects you discovered: check the issue list before "fixing" something, and if you
 disagree with a decision, argue it in the issue rather than changing it in passing.
+
+## Shared agent skills
+
+Shared skills live in [MaximumTrainer/agent-skills](https://github.com/MaximumTrainer/agent-skills). Before writing a new
+skill, runbook or repeated procedure, check the catalogue - and send genuinely
+general improvements back so the other repositories get them too.
+
+```bash
+python3 .claude/skills/skill-exchange/scripts/skills.py list
+python3 .claude/skills/skill-exchange/scripts/skills.py status
+```
+
+See `.claude/skills/skill-exchange/` for the workflow.

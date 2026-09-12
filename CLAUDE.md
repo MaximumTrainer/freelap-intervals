@@ -43,3 +43,16 @@ npm run check    # typecheck + lint + 246 tests. Green before you stop, no excep
 Do the task asked. If you find a real problem outside it, say so and file or reference an issue —
 don't fold an unrelated refactor into the diff. One reason to change per commit: behaviour or
 refactor, never both.
+
+## Shared agent skills
+
+Shared skills live in [MaximumTrainer/agent-skills](https://github.com/MaximumTrainer/agent-skills). Before writing a new
+skill, runbook or repeated procedure, check the catalogue - and send genuinely
+general improvements back so the other repositories get them too.
+
+```bash
+python3 .claude/skills/skill-exchange/scripts/skills.py list
+python3 .claude/skills/skill-exchange/scripts/skills.py status
+```
+
+See `.claude/skills/skill-exchange/` for the workflow.
