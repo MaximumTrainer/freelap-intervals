@@ -117,7 +117,7 @@ describe('writing', () => {
 
   it('creates only the custom fields the athlete does not already have', async () => {
     const http = new StubFetch().respondWith(
-      { status: 200, body: [{ code: 'fl_best_s', name: 'Freelap best (s)', type: 'NUMBER' }] },
+      { status: 200, body: [{ type: 'ACTIVITY_FIELD', content: { code: 'fl_best_s', type: 'numeric' } }] },
       { status: 200, body: {} },
     )
 
@@ -130,7 +130,7 @@ describe('writing', () => {
     expect(http.lastRequest()).toMatchObject({
       method: 'POST',
       url: 'https://intervals.icu/api/v1/athlete/i1/custom-item',
-      body: { code: 'fl_avg_s', name: 'Freelap average (s)', type: 'NUMBER', target: 'ACTIVITY' },
+      body: { type: 'ACTIVITY_FIELD', name: 'Freelap average (s)', content: { code: 'fl_avg_s', type: 'numeric' } },
     })
   })
 

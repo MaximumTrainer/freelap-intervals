@@ -165,17 +165,17 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
   }
 
   async ensureCustomFields(athleteId: string, definitions: readonly CustomFieldDefinition[]): Promise<void> {
-    const existing = await this.send<Array<{ code?: string }>>({
+    const existing = await this.send<WireCustomItem[]>({
       method: 'GET',
       path: `/api/v1/athlete/${athleteId}/custom-item`,
     })
-    const known = new Set(existing.map((item) => item.code))
+    const known = new Set(existing.map((item) => item.content?.code).filter(Boolean))
 
     for (const definition of definitions.filter((field) => !known.has(field.code))) {
       await this.send({
         method: 'POST',
         path: `/api/v1/athlete/${athleteId}/custom-item`,
-        json: { ...definition, target: 'ACTIVITY' },
+        json: toWireCustomItem(definition),
       })
     }
   }
@@ -260,6 +260,21 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
       accept: 'application/json',
       ...(spec.json === undefined ? {} : { 'content-type': 'application/json' }),
     }
+  }
+}
+
+interface WireCustomItem {
+  readonly type?: string
+  readonly content?: { readonly code?: string; readonly type?: string }
+}
+
+const FIELD_TYPE_TO_WIRE: Record<string, string> = { NUMBER: 'numeric', TEXT: 'text' }
+
+function toWireCustomItem(definition: CustomFieldDefinition): Record<string, unknown> {
+  return {
+    type: 'ACTIVITY_FIELD',
+    name: definition.name,
+    content: { code: definition.code, type: FIELD_TYPE_TO_WIRE[definition.type] ?? 'text' },
   }
 }
 

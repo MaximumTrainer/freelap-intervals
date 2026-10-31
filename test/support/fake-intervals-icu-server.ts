@@ -115,14 +115,22 @@ export class FakeIntervalsIcuServer {
       })
     }
 
-    if (segments[2] === 'custom-item' && method === 'GET') return [...this.customFieldNames.values()]
+    if (segments[2] === 'custom-item' && method === 'GET') {
+      return [...this.customFieldNames.values()].map(({ code, name, type }) => ({
+        type: 'ACTIVITY_FIELD',
+        name,
+        content: { code, type },
+      }))
+    }
 
     if (segments[2] === 'custom-item' && method === 'POST') {
-      const definition = json() as { code: string; name: string; type: string }
-      this.customFieldNames.set(definition.code, definition)
-      await this.icu.ensureCustomFields(athleteId, [{ ...definition, type: 'NUMBER' }])
+      const item = json() as { name?: string; content?: { code?: string; type?: string } }
+      const code = item.content?.code ?? ''
+      const fieldType = item.content?.type === 'numeric' ? 'NUMBER' : 'TEXT'
+      this.customFieldNames.set(code, { code, name: item.name ?? '', type: item.content?.type ?? 'text' })
+      await this.icu.ensureCustomFields(athleteId, [{ code, name: item.name ?? '', type: fieldType }])
 
-      return definition
+      return item
     }
 
     throw new IntervalsIcuError(`No athlete route for ${method} ${segments.join('/')}`, 404, false)
