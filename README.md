@@ -48,7 +48,7 @@ What lands on the activity:
 
 - **Intervals** named `FL #4 · 30m · 3.35s` — deterministic, so a re-sync replaces only the
   intervals this app owns and leaves the athlete's warmups and cool-downs alone.
-- **Custom fields** `fl_session_id`, `fl_rep_count`, `fl_best_s`, `fl_avg_s`, `fl_distance_m`.
+- **Custom fields** `FlSessionId`, `FlRepCount`, `FlBestS`, `FlAvgS`, `FlDistanceM`.
 - **A description block** fenced by `<!-- freelap:start -->` … `<!-- freelap:end -->` holding a rep
   table with intermediate splits and max speed. Only that block is replaced on re-sync.
 - **`external_id`** `freelap:<sourceId>`, claimed only if the activity has none. An activity that

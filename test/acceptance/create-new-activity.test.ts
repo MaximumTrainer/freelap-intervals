@@ -41,11 +41,11 @@ describe('syncing a Freelap session when there is no watch recording', () => {
     expect(intervals.map((interval) => interval.end_index - interval.start_index)).toEqual([3, 3, 4, 3, 3, 4])
 
     expect(activity.custom_fields).toMatchObject({
-      fl_session_id: session.sourceId,
-      fl_rep_count: 6,
-      fl_best_s: 3.35,
-      fl_avg_s: 3.452,
-      fl_distance_m: 30,
+      FlSessionId: session.sourceId,
+      FlRepCount: 6,
+      FlBestS: 3.35,
+      FlAvgS: 3.452,
+      FlDistanceM: 30,
     })
 
     expect(activity.description).toContain('<!-- freelap:start -->')

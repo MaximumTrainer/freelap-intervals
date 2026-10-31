@@ -60,12 +60,12 @@ describe('FakeIntervalsIcu', () => {
     const icu = new FakeIntervalsIcu()
     const activity = icu.givenActivity({ start_date_local: '2026-08-29T10:00:00' })
 
-    await expect(icu.setCustomFields(activity.id, { fl_best_s: 3.35 })).rejects.toThrow(/fl_best_s/)
+    await expect(icu.setCustomFields(activity.id, { FlBestS: 3.35 })).rejects.toThrow(/FlBestS/)
 
-    await icu.ensureCustomFields(icu.athleteId, [{ code: 'fl_best_s', name: 'Best', type: 'NUMBER' }])
-    await icu.setCustomFields(activity.id, { fl_best_s: 3.35 })
+    await icu.ensureCustomFields(icu.athleteId, [{ code: 'FlBestS', name: 'Best', type: 'NUMBER' }])
+    await icu.setCustomFields(activity.id, { FlBestS: 3.35 })
 
-    expect(icu.activity(activity.id).custom_fields).toEqual({ fl_best_s: 3.35 })
+    expect(icu.activity(activity.id).custom_fields).toEqual({ FlBestS: 3.35 })
   })
 
   it('fails the next call on demand so error paths can be exercised', async () => {

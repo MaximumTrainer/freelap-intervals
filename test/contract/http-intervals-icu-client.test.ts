@@ -117,20 +117,20 @@ describe('writing', () => {
 
   it('creates only the custom fields the athlete does not already have', async () => {
     const http = new StubFetch().respondWith(
-      { status: 200, body: [{ type: 'ACTIVITY_FIELD', content: { code: 'fl_best_s', type: 'numeric' } }] },
+      { status: 200, body: [{ type: 'ACTIVITY_FIELD', content: { code: 'FlBestS', type: 'numeric' } }] },
       { status: 200, body: {} },
     )
 
     await withApiKey(http).ensureCustomFields('i1', [
-      { code: 'fl_best_s', name: 'Freelap best (s)', type: 'NUMBER' },
-      { code: 'fl_avg_s', name: 'Freelap average (s)', type: 'NUMBER' },
+      { code: 'FlBestS', name: 'Freelap best (s)', type: 'NUMBER' },
+      { code: 'FlAvgS', name: 'Freelap average (s)', type: 'NUMBER' },
     ])
 
     expect(http.requests).toHaveLength(2)
     expect(http.lastRequest()).toMatchObject({
       method: 'POST',
       url: 'https://intervals.icu/api/v1/athlete/i1/custom-item',
-      body: { type: 'ACTIVITY_FIELD', name: 'Freelap average (s)', content: { code: 'fl_avg_s', type: 'numeric' } },
+      body: { type: 'ACTIVITY_FIELD', name: 'Freelap average (s)', content: { code: 'FlAvgS', type: 'numeric' } },
     })
   })
 
@@ -148,12 +148,12 @@ describe('writing', () => {
   it('writes custom field values onto the activity by their code', async () => {
     const http = new StubFetch().respondWith({ status: 200, body: {} })
 
-    await withApiKey(http).setCustomFields('a1', { fl_best_s: 3.35, fl_session_id: 'csv-abc' })
+    await withApiKey(http).setCustomFields('a1', { FlBestS: 3.35, FlSessionId: 'csv-abc' })
 
     expect(http.lastRequest()).toMatchObject({
       method: 'PUT',
       url: 'https://intervals.icu/api/v1/activity/a1',
-      body: { fl_best_s: 3.35, fl_session_id: 'csv-abc' },
+      body: { FlBestS: 3.35, FlSessionId: 'csv-abc' },
     })
   })
 })

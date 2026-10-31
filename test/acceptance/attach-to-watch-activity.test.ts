@@ -49,7 +49,7 @@ describe('syncing a Freelap session onto the watch recording of the same session
     const activity = icu.activity(watchRun.id)
     expect(activity.description).toBe(`Track session.\n\n${extractBlock(activity.description)}`)
     expect(activity.external_id).toBe(`freelap:${session.sourceId}`)
-    expect(activity.custom_fields).toMatchObject({ fl_rep_count: 6, fl_best_s: 3.35 })
+    expect(activity.custom_fields).toMatchObject({ FlRepCount: 6, FlBestS: 3.35 })
 
     expect(await ledger.findBySourceId(session.sourceId)).toMatchObject({
       mode: 'attach',

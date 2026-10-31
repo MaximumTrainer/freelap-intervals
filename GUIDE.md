@@ -71,7 +71,7 @@ When the sync completes, the activity in intervals.icu gains:
 | What | Example |
 |---|---|
 | **Intervals** | `FL #1 · 30m · 3.35s`, `FL #2 · 30m · 3.41s` |
-| **Custom fields** | `fl_session_id`, `fl_rep_count`, `fl_best_s`, `fl_avg_s`, `fl_distance_m` |
+| **Custom fields** | `FlSessionId`, `FlRepCount`, `FlBestS`, `FlAvgS`, `FlDistanceM` |
 | **Description block** | A rep table with intermediate splits and max speed, fenced so your own notes are preserved |
 | **External ID** | `freelap:<sourceId>`, claimed only if the activity has none |
 

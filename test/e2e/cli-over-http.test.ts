@@ -74,7 +74,7 @@ describe('the whole tool, over real HTTP, with state on disk', () => {
       external_id: `freelap:${sourceId}`,
       type: 'Run',
       distance: 180,
-      custom_fields: { fl_rep_count: 6, fl_best_s: 3.35, fl_avg_s: 3.452, fl_distance_m: 30 },
+      custom_fields: { FlRepCount: 6, FlBestS: 3.35, FlAvgS: 3.452, FlDistanceM: 30 },
     })
 
     expect(await runCli('verify', sourceId)).toBe(0)
