@@ -91,7 +91,25 @@ async function main(): Promise<number> {
     createdActivityId = outcome.activityId
     pass(`Created activity ${outcome.activityId}`)
 
-    // 6. Verify
+    // 6. Probe the raw activity response to see custom field shape
+    step('Probing raw activity response')
+    const activityResponse = await fetch(
+      `https://intervals.icu/api/v1/activity/${outcome.activityId}`,
+      { headers: { authorization: authHeader(credentials), accept: 'application/json' } },
+    )
+    const rawActivity = await activityResponse.json() as Record<string, unknown>
+    const fieldKeys = Object.keys(rawActivity).filter((key) => key.startsWith('Fl') || key.startsWith('fl'))
+    pass(`Activity has ${Object.keys(rawActivity).length} keys`)
+    if (fieldKeys.length > 0) {
+      detail(`  Freelap field keys: ${JSON.stringify(fieldKeys)}`)
+      for (const key of fieldKeys) {
+        detail(`    ${key}: ${JSON.stringify(rawActivity[key])}`)
+      }
+    } else {
+      detail(`  No Fl/fl field keys found. All keys: ${Object.keys(rawActivity).join(', ')}`)
+    }
+
+    // 7. Verify
     step('Verifying sync')
     const verification = await app.verify(sourceId)
     if (verification.status === 'pass') {
@@ -104,7 +122,7 @@ async function main(): Promise<number> {
       return 1
     }
 
-    // 7. Re-sync (idempotency check)
+    // 8. Re-sync (idempotency check)
     step('Re-syncing (idempotency check)')
     const resync = await app.sync(sourceId, { mode: 'attach', activityId: outcome.activityId })
     if (resync.skipped) {
