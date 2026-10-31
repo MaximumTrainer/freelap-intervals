@@ -9,4 +9,5 @@ test
 .claude
 .eslintcache
 coverage
+scripts
 dist

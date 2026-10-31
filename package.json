@@ -18,7 +18,8 @@
     "web": "tsx src/web/main.ts",
     "worker": "tsx src/worker/main.ts",
     "sync": "tsx src/cli/main.ts",
-    "reseal": "tsx src/security/reseal-cli.ts"
+    "reseal": "tsx src/security/reseal-cli.ts",
+    "integration": "tsx scripts/integration-test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

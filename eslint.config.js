@@ -65,7 +65,7 @@ const READS_THE_ENVIRONMENT = [
 const WRITES_TO_THE_CONSOLE = ['src/cli/**']
 
 export default tseslint.config(
-  { ignores: ['node_modules/**', 'coverage/**', '**/*.d.ts'] },
+  { ignores: ['node_modules/**', 'coverage/**', 'scripts/**', '**/*.d.ts'] },
 
   js.configs.recommended,
   ...tsConfigs.strictTypeChecked,

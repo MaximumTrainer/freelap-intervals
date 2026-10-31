@@ -1,0 +1,34 @@
+name: Integration test
+
+on:
+  workflow_dispatch:
+    inputs:
+      csv:
+        description: Path to a CSV fixture (leave blank for the default test fixture)
+        required: false
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    if: github.repository == 'MaximumTrainer/freelap-intervals'
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run integration test
+        env:
+          INTERVALS_ICU_ATHLETE_ID: ${{ secrets.INTERVALS_ICU_ATHLETE_ID }}
+          INTERVALS_ICU_API_KEY: ${{ secrets.INTERVALS_ICU_API_KEY }}
+        run: npx tsx scripts/integration-test.ts ${{ github.event.inputs.csv }}
