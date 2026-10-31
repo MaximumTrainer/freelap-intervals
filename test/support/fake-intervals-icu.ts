@@ -12,6 +12,7 @@ import type {
 } from '~/icu/intervals-icu-client'
 import { IntervalsIcuError } from '~/icu/intervals-icu-client'
 import { toLocalIso } from '~/domain/zoned-time'
+import type { DecodedLap } from '~/write/fit'
 import { decodeFitActivity } from '~/write/fit'
 
 export interface FakeIntervalsIcuOptions {
@@ -170,10 +171,12 @@ export class FakeIntervalsIcu implements IntervalsIcuClient {
       distance: decoded.session.totalDistanceM ?? 0,
     }
 
+    const streams = streamsFrom(decoded.records, decoded.session.startEpochMs)
+
     this.stored.set(id, {
       activity,
-      streams: streamsFrom(decoded.records, decoded.session.startEpochMs),
-      intervals: [],
+      streams,
+      intervals: autoDetectedIntervals(decoded.laps, decoded.session.startEpochMs, streams.time),
     })
 
     return activity
@@ -235,4 +238,38 @@ function streamsFrom(
     distance: records.map((record) => record.distanceM ?? 0),
     velocity_smooth: records.map((record) => record.speedMps ?? 0),
   }
+}
+
+/** Simulates the intervals the real API auto-detects from FIT lap markers on upload. */
+function autoDetectedIntervals(
+  laps: readonly DecodedLap[],
+  sessionStartEpochMs: number,
+  streamTimes: readonly number[],
+): IcuInterval[] {
+  return laps.map((lap, index) => {
+    const startS = (lap.startEpochMs - sessionStartEpochMs) / 1000
+    const endS = startS + (lap.totalElapsedS ?? 0)
+
+    return {
+      type: 'WORK' as const,
+      name: `Lap ${index + 1}`,
+      start_index: closestIndex(streamTimes, startS),
+      end_index: closestIndex(streamTimes, endS),
+    }
+  })
+}
+
+function closestIndex(times: readonly number[], targetS: number): number {
+  let best = 0
+  let bestGap = Number.POSITIVE_INFINITY
+
+  for (let i = 0; i < times.length; i++) {
+    const gap = Math.abs((times[i] ?? 0) - targetS)
+    if (gap < bestGap) {
+      best = i
+      bestGap = gap
+    }
+  }
+
+  return best
 }

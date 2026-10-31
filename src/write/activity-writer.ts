@@ -194,9 +194,13 @@ export class ActivityWriter {
     })
 
     const ours = toIcuIntervals(planned, streamTimes)
-    const theirs = (await this.icu.getIntervals(activity.id)).filter((interval) => !isFreelapInterval(interval.name))
 
-    await this.icu.putIntervals(activity.id, [...theirs, ...ours].sort(byStartIndex))
+    if (request.choice.mode === 'attach') {
+      const theirs = (await this.icu.getIntervals(activity.id)).filter((interval) => !isFreelapInterval(interval.name))
+      await this.icu.putIntervals(activity.id, [...theirs, ...ours].sort(byStartIndex))
+    } else {
+      await this.icu.putIntervals(activity.id, ours)
+    }
   }
 
   private async writeCustomFields(request: WriteRequest, activityId: string): Promise<void> {
