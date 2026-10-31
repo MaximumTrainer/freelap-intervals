@@ -71,13 +71,27 @@ async function main(): Promise<number> {
     const plan = await app.planSync(sourceId)
     pass(`${plan.candidates.length} candidate(s), recommendation: ${plan.recommendation.mode}`)
 
-    // 4. Push (always create new to avoid touching real activities)
+    // 4. Probe custom items format (diagnostic)
+    step('Probing custom items format')
+    const probeResponse = await fetch(
+      `https://intervals.icu/api/v1/athlete/${athleteId}/custom-item`,
+      { headers: { authorization: authHeader(credentials), accept: 'application/json' } },
+    )
+    const customItems = await probeResponse.json() as unknown[]
+    const activityFields = (customItems as Array<Record<string, unknown>>)
+      .filter((item) => item.type === 'ACTIVITY_FIELD')
+    pass(`Found ${customItems.length} custom items (${activityFields.length} activity fields)`)
+    if (activityFields.length > 0) {
+      detail(`  sample: ${JSON.stringify(activityFields[0])}`)
+    }
+
+    // 5. Push (always create new to avoid touching real activities)
     step('Pushing as new activity')
     const outcome = await app.sync(sourceId, { mode: 'create-new' })
     createdActivityId = outcome.activityId
     pass(`Created activity ${outcome.activityId}`)
 
-    // 5. Verify
+    // 6. Verify
     step('Verifying sync')
     const verification = await app.verify(sourceId)
     if (verification.status === 'pass') {
@@ -90,7 +104,7 @@ async function main(): Promise<number> {
       return 1
     }
 
-    // 6. Re-sync (idempotency check)
+    // 7. Re-sync (idempotency check)
     step('Re-syncing (idempotency check)')
     const resync = await app.sync(sourceId, { mode: 'attach', activityId: outcome.activityId })
     if (resync.skipped) {
@@ -140,6 +154,12 @@ function requireEnv(name: string): string {
 
 function defaultFixture(): string {
   return fileURLToPath(new URL('../test/fixtures/flying-30m-semicolon.csv', import.meta.url))
+}
+
+function authHeader(credentials: Credentials): string {
+  return credentials.kind === 'oauth'
+    ? `Bearer ${credentials.accessToken}`
+    : `Basic ${btoa(`API_KEY:${credentials.key}`)}`
 }
 
 function step(msg: string): void { console.log(`  ${DIM}${msg}${RESET}`) }
