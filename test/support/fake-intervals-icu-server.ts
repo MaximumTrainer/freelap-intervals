@@ -159,8 +159,8 @@ export class FakeIntervalsIcuServer {
     }
 
     if (segments[2] === 'intervals' && method === 'PUT') {
-      const envelope = json() as { icu_intervals?: Array<Record<string, unknown>> }
-      await this.icu.putIntervals(activityId, (envelope.icu_intervals ?? []).map(fromWire))
+      const intervals = json() as unknown as Array<Record<string, unknown>>
+      await this.icu.putIntervals(activityId, intervals.map(fromWire))
 
       return {}
     }

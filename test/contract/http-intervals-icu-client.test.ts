@@ -84,9 +84,9 @@ describe('writing', () => {
     const request = http.lastRequest()
     expect(request.method).toBe('PUT')
     expect(request.url).toBe('https://intervals.icu/api/v1/activity/a1/intervals')
-    expect(request.body).toEqual({
-      icu_intervals: [{ type: 'WORK', start_index: 10, end_index: 13, label: 'FL #1 · 30m · 3.42s' }],
-    })
+    expect(request.body).toEqual([
+      { type: 'WORK', start_index: 10, end_index: 13, label: 'FL #1 · 30m · 3.42s' },
+    ])
   })
 
   it('uploads a FIT file as multipart form data and reads back the created activity', async () => {

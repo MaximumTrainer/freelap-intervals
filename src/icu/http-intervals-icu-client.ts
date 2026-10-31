@@ -141,7 +141,7 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
     await this.send({
       method: 'PUT',
       path: `/api/v1/activity/${activityId}/intervals`,
-      json: { icu_intervals: intervals.map(toWireInterval) },
+      json: intervals.map(toWireInterval),
     })
   }
 
