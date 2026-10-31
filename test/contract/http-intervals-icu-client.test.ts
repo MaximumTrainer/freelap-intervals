@@ -71,6 +71,21 @@ describe('reading activities', () => {
       velocity_smooth: [0, 3, 3],
     })
   })
+  it('extracts configured custom field codes from the top-level activity response', async () => {
+    const http = new StubFetch().respondWith({
+      status: 200,
+      body: { id: 'a1', start_date_local: '2026-08-29T10:14:03', type: 'Run', name: 'Sprint', FlBestS: 3.35, FlRepCount: 6, other_field: 42 },
+    })
+    const client = new HttpIntervalsIcuClient({
+      credentials: { kind: 'apiKey', key: 'k' },
+      fetch: http.fetch,
+      customFieldCodes: ['FlBestS', 'FlRepCount', 'FlAvgS'],
+    })
+
+    const activity = await client.getActivity('a1')
+
+    expect(activity.custom_fields).toEqual({ FlBestS: 3.35, FlRepCount: 6 })
+  })
 })
 
 describe('writing', () => {

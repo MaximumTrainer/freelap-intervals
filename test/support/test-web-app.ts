@@ -19,6 +19,7 @@ import { PgSyncDirectory } from '~/ledger/sync-directory'
 import { PgColumnMappingStore } from '~/ingest/csv/column-mapping-store'
 import { OAuthCredentialSource } from '~/auth/oauth-credential-source'
 import { HttpIntervalsIcuClient } from '~/icu/http-intervals-icu-client'
+import { FREELAP_CUSTOM_FIELDS } from '~/write/custom-fields'
 import { ConnectionProbe } from '~/web/connection-probe'
 import { ConnectionStore } from '~/security/connection-store'
 import { EnvelopeCipher } from '~/security/envelope-cipher'
@@ -101,6 +102,7 @@ export async function startTestWebApp(options: TestWebAppOptions): Promise<Runni
       credentials: new OAuthCredentialSource({ userId, connections, oauth }),
       baseUrl: options.icu.baseUrl,
       retry: { attempts: 2, baseDelayMs: 0, sleep: async () => {} },
+      customFieldCodes: FREELAP_CUSTOM_FIELDS.map((field) => field.code),
     }),
     freelapSourceFor: async (userId) => {
       if (!flags.myfreelapWebAdapter) return null

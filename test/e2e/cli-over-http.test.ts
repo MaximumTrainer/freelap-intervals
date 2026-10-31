@@ -9,6 +9,7 @@ import { SyncApplication } from '~/app/sync-application'
 import { runCommand } from '~/cli/commands'
 import { HttpIntervalsIcuClient } from '~/icu/http-intervals-icu-client'
 import { FileSyncLedger } from '~/ledger/file-sync-ledger'
+import { FREELAP_CUSTOM_FIELDS } from '~/write/custom-fields'
 
 import { FakeIntervalsIcuServer } from '../support/fake-intervals-icu-server'
 import { csvFixture } from '../support/fixtures'
@@ -24,6 +25,7 @@ describe('the whole tool, over real HTTP, with state on disk', () => {
         baseUrl: server.baseUrl,
         credentials: { kind: 'apiKey', key: 'test-key' },
         retry: { attempts: 2, baseDelayMs: 0, sleep: async () => {} },
+        customFieldCodes: FREELAP_CUSTOM_FIELDS.map((field) => field.code),
       }),
       ledger: new FileSyncLedger(join(stateDir, 'ledger.json')),
       sessions: new FileSessionRepository(join(stateDir, 'sessions.json')),

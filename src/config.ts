@@ -36,6 +36,7 @@ import { appliedVersions } from '~/db/migrator'
 import { LocalKeyManagementService } from '~/security/local-kms'
 import { Secret } from '~/security/secret'
 import { InMemoryRateLimiter } from '~/outbound-rate-limiter'
+import { FREELAP_CUSTOM_FIELDS } from '~/write/custom-fields'
 import { ConnectionProbe } from '~/web/connection-probe'
 import { DedupFilter } from '~/web/dedup-filter'
 import { RateLimiter } from '~/web/rate-limiter'
@@ -186,6 +187,7 @@ function buildWebDependencies(
     icuClientFor: (userId, athleteId) => new HttpIntervalsIcuClient({
       credentials: new OAuthCredentialSource({ userId, connections: shared.connections, oauth: shared.oauth }),
       ...(config.icuBaseUrl === undefined ? {} : { baseUrl: config.icuBaseUrl }),
+      customFieldCodes: FREELAP_CUSTOM_FIELDS.map((field) => field.code),
       limiter: shared.icuLimiter,
       limiterKeys: ['intervals.icu', `athlete:${athleteId}`],
       retry: { attempts: 2, baseDelayMs: 0, sleep: noSleep },

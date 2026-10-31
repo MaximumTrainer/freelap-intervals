@@ -24,6 +24,7 @@ import { SyncApplication } from '~/app/sync-application'
 import { HttpIntervalsIcuClient } from '~/icu/http-intervals-icu-client'
 import type { Credentials } from '~/icu/http-intervals-icu-client'
 import { FileSyncLedger } from '~/ledger/file-sync-ledger'
+import { FREELAP_CUSTOM_FIELDS } from '~/write/custom-fields'
 
 const PASS = '\x1b[32m✓\x1b[0m'
 const FAIL = '\x1b[31m✗\x1b[0m'
@@ -38,7 +39,10 @@ async function main(): Promise<number> {
   const csvPath = process.argv[2] ?? defaultFixture()
   const stateDir = await mkdtemp(join(tmpdir(), 'freelap-integ-'))
 
-  const icu = new HttpIntervalsIcuClient({ credentials })
+  const icu = new HttpIntervalsIcuClient({
+    credentials,
+    customFieldCodes: FREELAP_CUSTOM_FIELDS.map((field) => field.code),
+  })
   const app = new SyncApplication({
     icu,
     ledger: new FileSyncLedger(join(stateDir, 'ledger.json')),

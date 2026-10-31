@@ -8,6 +8,7 @@ import { HttpIntervalsIcuClient } from '~/icu/http-intervals-icu-client'
 import type { CsvImportOptions } from '~/ingest/csv/csv-adapter'
 import type { OutboundRateLimiter } from '~/outbound-rate-limiter'
 import type { ConnectionStore } from '~/security/connection-store'
+import { FREELAP_CUSTOM_FIELDS } from '~/write/custom-fields'
 
 import { SyncApplication } from './sync-application'
 import type { Workspaces } from './workspaces'
@@ -47,6 +48,7 @@ export class Applications {
     const icu = new AuditedIntervalsIcuClient(
       new HttpIntervalsIcuClient({
         credentials,
+        customFieldCodes: FREELAP_CUSTOM_FIELDS.map((field) => field.code),
         ...(this.options.icuBaseUrl === undefined ? {} : { baseUrl: this.options.icuBaseUrl }),
         ...(this.options.fetch === undefined ? {} : { fetch: this.options.fetch }),
         ...(this.options.icuRetry === undefined ? {} : { retry: this.options.icuRetry }),

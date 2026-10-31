@@ -42,6 +42,7 @@ export interface HttpIntervalsIcuClientOptions {
   readonly retry?: RetryPolicy
   readonly limiter?: OutboundRateLimiter
   readonly limiterKeys?: readonly string[]
+  readonly customFieldCodes?: readonly string[]
 }
 
 interface RequestSpec {
@@ -70,6 +71,7 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
   private readonly credentials: CredentialSource
   private readonly limiter: OutboundRateLimiter
   private readonly limiterKeys: readonly string[]
+  private readonly customFieldCodes: ReadonlySet<string>
 
   constructor(options: HttpIntervalsIcuClientOptions) {
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '')
@@ -77,6 +79,7 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
     this.http = options.fetch ?? globalThis.fetch
     this.limiter = options.limiter ?? new NoopRateLimiter()
     this.limiterKeys = options.limiterKeys ?? []
+    this.customFieldCodes = new Set(options.customFieldCodes ?? [])
     this.retry = {
       attempts: options.retry?.attempts ?? DEFAULT_ATTEMPTS,
       baseDelayMs: options.retry?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
@@ -102,7 +105,9 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
   }
 
   async getActivity(activityId: string): Promise<IcuActivity> {
-    return this.send<IcuActivity>({ method: 'GET', path: `/api/v1/activity/${activityId}` })
+    const raw = await this.send<Record<string, unknown>>({ method: 'GET', path: `/api/v1/activity/${activityId}` })
+
+    return { ...(raw as unknown as IcuActivity), custom_fields: this.extractCustomFields(raw) }
   }
 
   async updateActivity(activityId: string, patch: ActivityPatch): Promise<IcuActivity> {
@@ -252,6 +257,18 @@ export class HttpIntervalsIcuClient implements IntervalsIcuClient {
     for (const [key, value] of Object.entries(spec.query ?? {})) url.searchParams.set(key, value)
 
     return url.toString()
+  }
+
+  private extractCustomFields(raw: Record<string, unknown>): Record<string, number | string> {
+    const fields: Record<string, number | string> = {}
+    for (const code of this.customFieldCodes) {
+      const value = raw[code]
+      if (typeof value === 'number' || typeof value === 'string') {
+        fields[code] = value
+      }
+    }
+
+    return fields
   }
 
   private async headersFor(spec: RequestSpec): Promise<Record<string, string>> {

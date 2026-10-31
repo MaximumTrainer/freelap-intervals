@@ -7,6 +7,7 @@ import { SyncApplication } from '~/app/sync-application'
 import { HttpIntervalsIcuClient } from '~/icu/http-intervals-icu-client'
 import type { Credentials } from '~/icu/http-intervals-icu-client'
 import { FileSyncLedger } from '~/ledger/file-sync-ledger'
+import { FREELAP_CUSTOM_FIELDS } from '~/write/custom-fields'
 
 import { runCommand } from './commands'
 
@@ -17,7 +18,10 @@ async function main(): Promise<number> {
   const athleteId = requireEnv('INTERVALS_ICU_ATHLETE_ID')
 
   const app = new SyncApplication({
-    icu: new HttpIntervalsIcuClient({ credentials: credentialsFromEnv() }),
+    icu: new HttpIntervalsIcuClient({
+      credentials: credentialsFromEnv(),
+      customFieldCodes: FREELAP_CUSTOM_FIELDS.map((field) => field.code),
+    }),
     ledger: new FileSyncLedger(join(stateDir, 'ledger.json')),
     sessions: new FileSessionRepository(join(stateDir, 'sessions.json')),
     athleteId,

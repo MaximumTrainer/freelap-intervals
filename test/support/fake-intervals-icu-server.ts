@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 
-import type { ActivityPatch, CustomFieldValues, IcuInterval } from '~/icu/intervals-icu-client'
+import type { ActivityPatch, CustomFieldValues, IcuActivity, IcuInterval } from '~/icu/intervals-icu-client'
 import { IntervalsIcuError } from '~/icu/intervals-icu-client'
 
 import { FakeIntervalsIcu } from './fake-intervals-icu'
@@ -96,10 +96,12 @@ export class FakeIntervalsIcuServer {
     if (segments.length === 2) return this.icu.athlete(athleteId)
 
     if (segments[2] === 'activities' && method === 'GET') {
-      return this.icu.listActivities(athleteId, {
+      const activities = await this.icu.listActivities(athleteId, {
         oldest: url.searchParams.get('oldest') ?? '',
         newest: url.searchParams.get('newest') ?? '',
       })
+
+      return activities.map(flattenCustomFields)
     }
 
     if (segments[2] === 'activities' && method === 'POST') {
@@ -143,7 +145,7 @@ export class FakeIntervalsIcuServer {
   ): Promise<unknown> {
     const activityId = segments[1]!
 
-    if (segments.length === 2 && method === 'GET') return this.icu.getActivity(activityId)
+    if (segments.length === 2 && method === 'GET') return flattenCustomFields(await this.icu.getActivity(activityId))
 
     if (segments.length === 2 && method === 'DELETE') {
       await this.icu.deleteActivity(activityId)
@@ -154,7 +156,7 @@ export class FakeIntervalsIcuServer {
       const [patch, customFields] = splitActivityBody(json())
       if (Object.keys(customFields).length > 0) await this.icu.setCustomFields(activityId, customFields)
 
-      return this.icu.updateActivity(activityId, patch)
+      return flattenCustomFields(await this.icu.updateActivity(activityId, patch))
     }
 
     if (segments[2] === 'streams') {
@@ -175,6 +177,13 @@ export class FakeIntervalsIcuServer {
 
     throw new IntervalsIcuError(`No activity route for ${method} ${segments.join('/')}`, 404, false)
   }
+}
+
+/** The real API returns custom field values as top-level keys, not nested under custom_fields. */
+function flattenCustomFields(activity: IcuActivity): Record<string, unknown> {
+  const { custom_fields: customFields, ...rest } = activity
+
+  return { ...rest, ...(customFields ?? {}) }
 }
 
 function splitActivityBody(body: Record<string, unknown>): [ActivityPatch, CustomFieldValues] {
